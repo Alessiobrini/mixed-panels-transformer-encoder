@@ -1,0 +1,58 @@
+
+/output
+/figs
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# VSCode / PyCharm project files
+.vscode/
+.idea/
+
+# Mac / Linux / Windows system files
+.DS_Store
+Thumbs.db
+
+# Environment and package files
+.env
+.venv
+env/
+venv/
+*.egg-info/
+.eggs/
+
+# Conda environment folders
+conda_env/
+*.conda
+
+# Output files
+*.log
+*.out
+*.tmp
+*.bak
+
+# Data files
+*.csv
+*.tsv
+*.h5
+*.parquet
+*.pkl
+*.joblib
+
+# Notebook and experiment artifacts
+*.checkpoint
+*.pt
+*.ckpt
+*.onnx
+
+# Environment tracking
+pip-log.txt
