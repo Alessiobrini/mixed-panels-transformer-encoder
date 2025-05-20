@@ -42,7 +42,7 @@ class MixedFrequencyDataset(Dataset):
         # Standardize features
         self.scaler = StandardScaler()
         self.features = self.scaler.fit_transform(
-            self.df[self.feature_columns].fillna(method="ffill")
+            self.df[self.feature_columns].fillna()
         ).astype(np.float32)
         
         
