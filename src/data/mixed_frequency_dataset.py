@@ -41,9 +41,13 @@ class MixedFrequencyDataset(Dataset):
 
         # Standardize features
         self.scaler = StandardScaler()
-        self.features = self.scaler.fit_transform(
-            self.df[self.feature_columns].ffill()
-        ).astype(np.float32)
+        
+        # Fill missing values in features using forward fill, then backfill if needed
+        filled_features = self.df[self.feature_columns].ffill().bfill()
+        # Now scale
+        self.features = self.scaler.fit_transform(filled_features).astype(np.float32)
+        assert not np.isnan(self.features).any(), "NaNs remain in standardized features"
+
         
         
         self.is_target_row = self.df[target_column].notna().astype(np.bool_).values
