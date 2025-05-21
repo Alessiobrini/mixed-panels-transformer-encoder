@@ -40,13 +40,7 @@ conda_env/
 *.tmp
 *.bak
 
-# Data files
-*.csv
-*.tsv
-*.h5
-*.parquet
-*.pkl
-*.joblib
+
 
 # Notebook and experiment artifacts
 *.checkpoint
