@@ -42,13 +42,16 @@ csv_path = project_root / "data" / "processed" / "mixed_freq_wide.csv"
 dataset = MixedFrequencyDataset(csv_path, target_column=TARGET)
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
+time_vocab_size = int(dataset.time_ids.max()) + 1
+
+
 # ------------------------
 # Model
 # ------------------------
 model = MixedFrequencyTransformer(
     raw_input_dim=4,
     freq_vocab_size=3,
-    time_vocab_size=400,
+    time_vocab_size=time_vocab_size,
     d_freq=4,
     d_time=8,
     d_model=64
