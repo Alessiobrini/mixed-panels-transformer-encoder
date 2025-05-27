@@ -27,6 +27,8 @@ class MixedFrequencyDataset(Dataset):
 
         # Time index: integer starting from 0
         self.time_ids = (self.df[time_column] - self.df[time_column].min()).dt.days
+        print("Max time ID:", self.time_ids.max())
+
 
         # Frequency ID (0 = daily, 1 = monthly, 2 = quarterly, etc.)
         self.freq_ids = self.df[freq_column].map(self.freq_map).values
