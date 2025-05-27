@@ -46,8 +46,35 @@ if __name__ == "__main__":
 
     df_daily = generate_variable_series(start_date, end_date, "D", ["D1"], mean=5.0, std=1.0)
     df_monthly = generate_variable_series(start_date, end_date, "ME", ["M1", "M2", "M3"], mean=50.0, std=10.0)
-    df_quarterly = generate_variable_series(start_date, end_date, "QE", ["Y"], mean=200.0, std=30.0)
-
+    # df_quarterly = generate_variable_series(start_date, end_date, "QE", ["Y"], mean=200.0, std=30.0)
+    
+    
+    # Compute quarterly averages
+    df_d1_q = df_daily[df_daily["Variable"] == "D1"].copy()
+    df_d1_q["Quarter"] = df_d1_q["Timestamp"].dt.to_period("Q")
+    avg_d1_q = df_d1_q.groupby("Quarter")["Value"].mean()
+    
+    df_m1_q = df_monthly[df_monthly["Variable"] == "M1"].copy()
+    df_m1_q["Quarter"] = df_m1_q["Timestamp"].dt.to_period("Q")
+    avg_m1_q = df_m1_q.groupby("Quarter")["Value"].mean()
+    
+    # Create synthetic Y
+    quarterly_index = pd.date_range(start=start_date, end=end_date, freq="QE")
+    y_values = []
+    
+    for q_date in quarterly_index:
+        q_str = q_date.to_period("Q")
+        d1_avg = avg_d1_q.get(q_str, np.nan)
+        m1_avg = avg_m1_q.get(q_str, np.nan)
+        if pd.isna(d1_avg) or pd.isna(m1_avg):
+            continue
+        noise = np.random.normal(loc=0.0, scale=5.0)
+        y = 0.6 * d1_avg + 0.4 * m1_avg + noise
+        y_values.append([q_date, "Y", y, "QE"])
+    
+    df_quarterly = pd.DataFrame(y_values, columns=["Timestamp", "Variable", "Value", "Frequency"])
+    
+    
 
     (df_daily.sort_values("Timestamp")
      .to_csv(output_dir / "toy_daily.csv", index=False))
