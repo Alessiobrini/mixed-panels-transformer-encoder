@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Union, Dict, List
 from sklearn.preprocessing import StandardScaler
 
-class MixedFrequencySequenceDataset(Dataset):
+class MixedFrequencyDataset(Dataset):
     """
     Dataset for mixed-frequency forecasting:
     - Each item is a 90-day context window of long-format tokens
