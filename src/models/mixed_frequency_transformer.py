@@ -41,26 +41,21 @@ class MixedFrequencyTransformer(nn.Module):
 
     def forward(
         self,
-        value: torch.Tensor,     # [B]
-        var_id: torch.Tensor,    # [B]
-        freq_id: torch.Tensor,   # [B]
-        time_id: torch.Tensor    # [B]
+        value: torch.Tensor,     # [B, T]
+        var_id: torch.Tensor,    # [B, T]
+        freq_id: torch.Tensor,   # [B, T]
+        time_id: torch.Tensor    # [B, T]
     ) -> torch.Tensor:
-        # Project scalar to embedding space
-        value_proj = self.value_proj(value.unsqueeze(-1))  # [B, d_value]
+        value_proj = self.value_proj(value.unsqueeze(-1))  # [B, T, d_value]
+        var_emb = self.var_embedding(var_id)               # [B, T, d_var]
+        freq_emb = self.freq_embedding(freq_id)            # [B, T, d_freq]
+        time_emb = self.time_embedding(time_id)            # [B, T, d_time]
+    
+        z = torch.cat([value_proj, var_emb, freq_emb, time_emb], dim=-1)  # [B, T, d_input]
+        z_proj = self.input_proj(z)                                       # [B, T, d_model]
+        out = self.transformer_encoder(z_proj)                            # [B, T, d_model]
+        pooled = out.mean(dim=1)                                          # [B, d_model]
+        pred = self.prediction_head(pooled)                               # [B, 1]
+        return pred.squeeze(-1)                                           # [B]
+    
 
-        # Embeddings
-        var_emb = self.var_embedding(var_id)     # [B, d_var]
-        freq_emb = self.freq_embedding(freq_id)  # [B, d_freq]
-        time_emb = self.time_embedding(time_id)  # [B, d_time]
-
-        # Concatenate and project
-        z = torch.cat([value_proj, var_emb, freq_emb, time_emb], dim=-1)  # [B, d_input]
-        z_proj = self.input_proj(z).unsqueeze(0)  # [1, B, d_model]
-
-        # Transformer encoder
-        out = self.transformer_encoder(z_proj)  # [1, B, d_model]
-
-        # Predict
-        pred = self.prediction_head(out.squeeze(0))  # [B, 1]
-        return pred.squeeze(-1)  # [B]
