@@ -1,9 +1,8 @@
 import sys
 import torch
 from pathlib import Path
-import logging
 import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torch import nn
 
 # Setup path
@@ -18,21 +17,10 @@ from src.data.utils import collate_batch
 # Config
 # ------------------------
 BATCH_SIZE = 8
-EPOCHS = 10
+EPOCHS = 5
 LEARNING_RATE = 1e-3
 CONTEXT_DAYS = 100
 TARGET = "Y"
-
-# ------------------------
-# Logging
-# ------------------------
-logging.basicConfig(
-    filename=project_root / "training.log",
-    filemode="w",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logging.getLogger().addHandler(logging.StreamHandler())
 
 # ------------------------
 # Load Dataset
@@ -40,15 +28,18 @@ logging.getLogger().addHandler(logging.StreamHandler())
 csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
 full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
 
-# Split train/test (80/20 split based on time order)
+# Ensure sequential split (no random shuffle)
 n = len(full_dataset)
 train_size = int(0.8 * n)
 test_size = n - train_size
-train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size], generator=torch.Generator().manual_seed(42))
+train_indices = list(range(train_size))
+test_indices = list(range(train_size, n))
+
+train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
+test_dataset = torch.utils.data.Subset(full_dataset, test_indices)
 
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
-
 
 # ------------------------
 # Model
@@ -70,7 +61,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 # ------------------------
 # Training Loop
 # ------------------------
-logging.info("Starting training...")
+print("Starting training...")
 model.train()
 for epoch in range(1, EPOCHS + 1):
     total_loss = 0.0
@@ -91,9 +82,9 @@ for epoch in range(1, EPOCHS + 1):
         total_loss += loss.item()
 
     avg_loss = total_loss / len(train_loader)
-    logging.info(f"Epoch {epoch:2d} - Train Loss = {avg_loss:.4f}")
+    print(f"Epoch {epoch:2d} - Train Loss = {avg_loss:.4f}")
 
-logging.info("Training complete.")
+print("Training complete.")
 
 # ------------------------
 # Evaluation & Plot
