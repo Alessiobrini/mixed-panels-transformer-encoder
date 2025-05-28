@@ -42,8 +42,8 @@ if __name__ == "__main__":
     output_dir = project_root / "data" / "raw"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    start_date = "2015-01-01"
-    end_date = "2022-12-31"
+    start_date = "1980-01-01"
+    end_date = "2024-12-31"
 
     df_daily = generate_variable_series(start_date, end_date, "D", ["D1"], mean=5.0, std=1.0)
     df_monthly = generate_variable_series(start_date, end_date, "ME", ["M1", "M2", "M3"], mean=50.0, std=10.0)
