@@ -52,36 +52,38 @@ class MixedFrequencyDataset(Dataset):
 
     def _build_sequence_targets(self) -> List[Dict]:
         """
-        Build sequences and their corresponding future Y target.
-        Each sequence includes all tokens in a rolling 90-day window.
+        Build context-target pairs where:
+        - Context: the 100-day window before each quarterly Y observation
+        - Target: the Y value at that quarterly timestamp
         """
         result = []
-        unique_days = sorted(self.df["time_id"].unique())
-        max_day = self.df["time_id"].max()
-
-        for start_day in unique_days:
-            end_day = start_day + self.context_days
-            if end_day >= max_day:
-                break
-
-            # Context window tokens
-            context_df = self.df[(self.df["time_id"] >= start_day) & (self.df["time_id"] < end_day)]
-
-            # Find the next available Y after the window
-            target_row = self.df[
-                (self.df["time_id"] > end_day) &
-                (self.df[self.variable_column] == self.target_variable)
-            ].head(1)
-
-            if target_row.empty:
-                continue
-
+    
+        # Identify all rows where the target variable appears (i.e., Y observations)
+        target_rows = self.df[self.df[self.variable_column] == self.target_variable]
+    
+        for _, row in target_rows.iterrows():
+            target_time_id = row["time_id"]
+            context_start = target_time_id - self.context_days
+            context_end = target_time_id  # exclusive
+    
+            if context_start < 0:
+                continue  # Not enough history to build context
+    
+            # Extract context window
+            context_df = self.df[
+                (self.df["time_id"] >= context_start) & (self.df["time_id"] < context_end)
+            ]
+    
+            if context_df.empty:
+                continue  # Skip if context has no data
+    
             result.append({
                 "context": context_df,
-                "target_value": float(target_row[self.value_column].values[0])
+                "target_value": float(row[self.value_column])
             })
-
+    
         return result
+
 
     def __len__(self) -> int:
         return len(self.sequence_windows)
