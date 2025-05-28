@@ -8,6 +8,7 @@ sys.path.append(str(project_root))
 
 from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
+from src.data.utils import collate_batch
 
 from torch.utils.data import DataLoader
 from torch import nn
@@ -15,7 +16,7 @@ from torch import nn
 # Load dataset
 csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
 dataset = MixedFrequencyDataset(csv_path)
-dataloader = DataLoader(dataset, batch_size=8, shuffle=False)  # smaller batch for testing
+dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_batch)  # smaller batch for testing
 
 # Vocab sizes
 time_vocab_size = int(dataset.time_ids.max()) + 1

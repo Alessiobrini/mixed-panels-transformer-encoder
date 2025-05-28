@@ -1,59 +1,66 @@
 import sys
+import torch
 from pathlib import Path
+import logging
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader, random_split
+from torch import nn
 
-# Add project root to sys.path
-project_root = Path(__file__).resolve().parents[1]  # from src/ to repo root
+# Setup path
+project_root = Path(__file__).resolve().parents[1]
 sys.path.append(str(project_root))
 
 from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
-
-import torch
-from torch.utils.data import DataLoader
-from torch import nn
-import logging
-
-# ------------------------
-# Logging setup
-# ------------------------
-log_path = project_root / "training.log"
-logging.basicConfig(
-    filename=log_path,
-    filemode="w",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-logging.getLogger().addHandler(console)
+from src.data.utils import collate_batch
 
 # ------------------------
 # Config
 # ------------------------
-BATCH_SIZE = 32
-EPOCHS = 20
+BATCH_SIZE = 8
+EPOCHS = 10
 LEARNING_RATE = 1e-3
+CONTEXT_DAYS = 100
 TARGET = "Y"
 
 # ------------------------
-# Data
+# Logging
 # ------------------------
-csv_path = project_root / "data" / "processed" / "mixed_freq_wide.csv"
-dataset = MixedFrequencyDataset(csv_path, target_column=TARGET)
-dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+logging.basicConfig(
+    filename=project_root / "training.log",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logging.getLogger().addHandler(logging.StreamHandler())
 
-time_vocab_size = int(dataset.time_ids.max()) + 1
+# ------------------------
+# Load Dataset
+# ------------------------
+csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
+full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
+
+# Split train/test (80/20 split based on time order)
+n = len(full_dataset)
+train_size = int(0.8 * n)
+test_size = n - train_size
+train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size], generator=torch.Generator().manual_seed(42))
+
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
 
 
 # ------------------------
 # Model
 # ------------------------
 model = MixedFrequencyTransformer(
-    raw_input_dim=4,
-    freq_vocab_size=3,
-    time_vocab_size=time_vocab_size,
+    freq_vocab_size=len(full_dataset.freq_map),
+    time_vocab_size=int(full_dataset.time_ids.max()) + 1,
+    var_vocab_size=len(full_dataset.var_map),
+    d_value=8,
     d_freq=4,
     d_time=8,
+    d_var=4,
     d_model=64
 )
 
@@ -64,37 +71,56 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 # Training Loop
 # ------------------------
 logging.info("Starting training...")
-
+model.train()
 for epoch in range(1, EPOCHS + 1):
     total_loss = 0.0
-    valid_batches = 0
-
-    for batch in dataloader:
-        raw_input = batch["raw_input"]
-        freq_id = batch["freq_id"]
-        time_id = batch["time_id"]
+    for batch in train_loader:
+        pred = model(
+            value=batch["value"],
+            var_id=batch["var_id"],
+            freq_id=batch["freq_id"],
+            time_id=batch["time_id"]
+        )
         target = batch["target"]
-        is_target = batch["is_target"]
+        loss = criterion(pred, target)
 
-        pred = model(raw_input, freq_id, time_id)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-        valid_pred = pred[is_target]
-        valid_target = target[is_target]
+        total_loss += loss.item()
 
-        if valid_target.numel() > 0:
-            loss = criterion(valid_pred, valid_target)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-            valid_batches += 1
-
-    if valid_batches > 0:
-        avg_loss = total_loss / valid_batches
-        logging.info(f"Epoch {epoch:2d}/{EPOCHS} - Avg. Masked Loss = {avg_loss:.4f}")
-    else:
-        logging.warning(f"Epoch {epoch:2d} - No valid target batches")
+    avg_loss = total_loss / len(train_loader)
+    logging.info(f"Epoch {epoch:2d} - Train Loss = {avg_loss:.4f}")
 
 logging.info("Training complete.")
+
+# ------------------------
+# Evaluation & Plot
+# ------------------------
+model.eval()
+preds, targets = [], []
+
+with torch.no_grad():
+    for batch in test_loader:
+        pred = model(
+            value=batch["value"],
+            var_id=batch["var_id"],
+            freq_id=batch["freq_id"],
+            time_id=batch["time_id"]
+        )
+        preds.extend(pred.tolist())
+        targets.extend(batch["target"].tolist())
+
+# Plot predictions vs. targets
+plt.figure(figsize=(10, 6))
+plt.plot(targets, label="True", marker='o')
+plt.plot(preds, label="Predicted", marker='x')
+plt.legend()
+plt.title("Model Forecasts vs True Targets")
+plt.xlabel("Sample")
+plt.ylabel("Scaled Target Value")
+plt.grid()
+plt.tight_layout()
+plt.savefig(project_root / "forecast_vs_true.png")
+plt.show()
