@@ -1,4 +1,5 @@
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 import numpy as np
 from pathlib import Path
 from typing import List
@@ -87,7 +88,17 @@ if __name__ == "__main__":
     
 
     df_all = pd.concat([df_daily, df_monthly, df_quarterly], axis=0)
-    df_all = df_all.sort_values("Timestamp").reset_index(drop=True)
+    
+    # Enforce variable order for consistent sorting
+    var_order = CategoricalDtype(
+        categories=["D1", "M1", "M2", "M3", "Y"], 
+        ordered=True
+    )
+    df_all["Variable"] = df_all["Variable"].astype(var_order)
+    
+    # Sort by timestamp, then variable order
+    df_all = df_all.sort_values(["Timestamp", "Variable"]).reset_index(drop=True)
+
 
     processed_dir = project_root / "data" / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
