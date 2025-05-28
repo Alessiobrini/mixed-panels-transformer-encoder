@@ -59,7 +59,8 @@ def long_to_wide_with_frequency_rows(
 
 if __name__ == "__main__":
     project_root = Path(__file__).resolve().parents[2]
-    input_csv = project_root / "data" / "raw" / "toy_mixed_frequency.csv"
+    input_csv = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
+
     output_csv = project_root / "data" / "processed" / "mixed_freq_wide.csv"
 
     long_to_wide_with_frequency_rows(input_path=input_csv, output_path=output_csv)
