@@ -89,6 +89,8 @@ if __name__ == "__main__":
     df_all = pd.concat([df_daily, df_monthly, df_quarterly], axis=0)
     df_all = df_all.sort_values("Timestamp").reset_index(drop=True)
 
-    output_path = output_dir / "toy_mixed_frequency.csv"
+    processed_dir = project_root / "data" / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    output_path = processed_dir / "toy_mixed_frequency_long.csv"
     df_all.to_csv(output_path, index=False)
     print(f"Toy dataset saved to {output_path.resolve()}")
