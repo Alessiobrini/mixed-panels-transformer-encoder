@@ -28,7 +28,6 @@ model = MixedFrequencyTransformer(
     freq_vocab_size=freq_vocab_size,
     time_vocab_size=time_vocab_size,
     var_vocab_size=var_vocab_size,
-    d_value=8,
     d_freq=4,
     d_time=8,
     d_var=4,

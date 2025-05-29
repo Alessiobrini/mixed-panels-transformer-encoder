@@ -48,7 +48,6 @@ model = MixedFrequencyTransformer(
     freq_vocab_size=len(full_dataset.freq_map),
     time_vocab_size=int(full_dataset.time_ids.max()) + 1,
     var_vocab_size=len(full_dataset.var_map),
-    d_value=8,
     d_freq=4,
     d_time=8,
     d_var=4,
