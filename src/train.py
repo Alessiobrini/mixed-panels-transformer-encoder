@@ -17,9 +17,9 @@ from src.data.utils import collate_batch
 # Config
 # ------------------------
 BATCH_SIZE = 16
-EPOCHS = 4
+EPOCHS = 50
 LEARNING_RATE = 5e-4
-CONTEXT_DAYS = 200
+CONTEXT_DAYS = 90
 TARGET = "Y"
 
 # ------------------------
@@ -67,8 +67,12 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 # ------------------------
 print("Starting training...")
 model.train()
+
 for epoch in range(1, EPOCHS + 1):
-    total_loss = 0.0
+    total_train_loss = 0.0
+
+    # ---- Training Phase ----
+    model.train()
     for batch in train_loader:
         pred = model(
             value=batch["value"],
@@ -82,10 +86,28 @@ for epoch in range(1, EPOCHS + 1):
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
+        total_train_loss += loss.item()
 
-    avg_loss = total_loss / len(train_loader)
-    print(f"Epoch {epoch:2d} - Train Loss = {avg_loss:.4f}")
+    avg_train_loss = total_train_loss / len(train_loader)
+
+    # ---- Evaluation Phase ----
+    model.eval()
+    total_test_loss = 0.0
+    with torch.no_grad():
+        for batch in test_loader:
+            pred = model(
+                value=batch["value"],
+                var_id=batch["var_id"],
+                freq_id=batch["freq_id"],
+            )
+            target = batch["target"]
+            loss = criterion(pred, target)
+            total_test_loss += loss.item()
+
+    avg_test_loss = total_test_loss / len(test_loader)
+
+    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.4f} | Test Loss = {avg_test_loss:.4f}")
+
 
 print("Training complete.")
 
