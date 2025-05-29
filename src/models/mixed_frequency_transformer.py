@@ -23,7 +23,7 @@ class MixedFrequencyTransformer(nn.Module):
         d_var: int = 4,
         d_model: int = 64,
         nhead: int = 4,
-        num_layers: int = 2,
+        num_layers: int = 4,
         dropout: float = 0.1,
         max_len: int = 512
     ):
@@ -54,7 +54,6 @@ class MixedFrequencyTransformer(nn.Module):
         value: torch.Tensor,     # [B, T]
         var_id: torch.Tensor,    # [B, T]
         freq_id: torch.Tensor,   # [B, T]
-        time_id: torch.Tensor    # [B, T]
     ) -> torch.Tensor:
         value_unsqueezed = value.unsqueeze(-1)                # [B, T, 1]
         var_emb = self.var_embedding(var_id)                  # [B, T, d_var]

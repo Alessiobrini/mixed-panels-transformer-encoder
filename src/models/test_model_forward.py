@@ -48,7 +48,6 @@ pred = model(
     value=batch["value"],         # [B, T]
     var_id=batch["var_id"],       # [B, T]
     freq_id=batch["freq_id"],     # [B, T]
-    time_id=batch["time_id"]      # [B, T]
 )
 
 # Compute loss

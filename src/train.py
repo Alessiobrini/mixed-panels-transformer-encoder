@@ -74,7 +74,6 @@ for epoch in range(1, EPOCHS + 1):
             value=batch["value"],
             var_id=batch["var_id"],
             freq_id=batch["freq_id"],
-            time_id=batch["time_id"]
         )
         target = batch["target"]
         loss = criterion(pred, target)
@@ -102,7 +101,6 @@ with torch.no_grad():
             value=batch["value"],
             var_id=batch["var_id"],
             freq_id=batch["freq_id"],
-            time_id=batch["time_id"]
         )
         preds.extend(pred.tolist())
         targets.extend(batch["target"].tolist())
