@@ -48,6 +48,10 @@ class MixedFrequencyTransformer(nn.Module):
 
         # Prediction head
         self.prediction_head = nn.Linear(d_model, 1)
+        
+        # Learnable scaling parameter for positional encoding
+        self.positional_scale = nn.Parameter(torch.tensor(1.0))
+
 
     def forward(
         self,
@@ -64,7 +68,26 @@ class MixedFrequencyTransformer(nn.Module):
 
         # Add positional encoding
         pos_enc = self.positional_encoding[:z_proj.size(1), :].unsqueeze(0)  # [1, T, d_model]
-        z_proj = z_proj + pos_enc
+        
+        
+        # input_proj_stats = {
+        #     "z_proj_mean": z_proj.mean().item(),
+        #     "z_proj_std": z_proj.std().item(),
+        #     "z_proj_max": z_proj.abs().max().item()
+        # }
+        
+        # pos_enc_stats = {
+        #     "pos_enc_mean": pos_enc.mean().item(),
+        #     "pos_enc_std": pos_enc.std().item(),
+        #     "pos_enc_max": pos_enc.abs().max().item()
+        # }
+        
+        # print("Input projection stats (before sum):", input_proj_stats)
+        # print("Positional encoding stats (before sum):", pos_enc_stats)
+
+
+        z_proj = z_proj + self.positional_scale * pos_enc
+        
 
         out = self.transformer_encoder(z_proj)                       # [B, T, d_model]
         pooled = out.mean(dim=1)                                     # [B, d_model]
