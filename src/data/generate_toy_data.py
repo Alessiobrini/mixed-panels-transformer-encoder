@@ -3,6 +3,8 @@ from pandas.api.types import CategoricalDtype
 import numpy as np
 from pathlib import Path
 from typing import List
+import matplotlib.pyplot as plt
+from statsmodels.graphics.tsaplots import plot_acf
 
 def generate_variable_series(
     start: str,
@@ -82,3 +84,21 @@ if __name__ == "__main__":
     output_path = processed_dir / "toy_mixed_frequency_long.csv"
     df_all.to_csv(output_path, index=False)
     print(f"Toy dataset with memory saved to {output_path.resolve()}")
+
+
+
+    # -------------------------------
+    # Correlogram of Y (Autocorrelation)
+    # -------------------------------
+    y_series = df_quarterly.set_index("Timestamp")["Value"]
+    plot_acf(y_series.dropna(), lags=20)
+    plt.title("Autocorrelation of Y")
+
+
+    # -------------------------------
+    # Correlation with other variables
+    # -------------------------------
+    pivot_df = df_all.pivot(index="Timestamp", columns="Variable", values="Value")
+    correlation_matrix = pivot_df.corr()
+    print("Correlation with Y:")
+    print(correlation_matrix["Y"].drop("Y").round(3))
