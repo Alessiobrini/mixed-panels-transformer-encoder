@@ -1,32 +1,45 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+
+
+def get_sinusoidal_encoding(seq_len, d_model):
+    position = torch.arange(seq_len, dtype=torch.float).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+    pe = torch.zeros(seq_len, d_model)
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+    return pe
+
 
 class MixedFrequencyTransformer(nn.Module):
     def __init__(
         self,
         freq_vocab_size: int,
-        time_vocab_size: int,
         var_vocab_size: int,
         d_freq: int = 4,
-        d_time: int = 8,
         d_var: int = 4,
         d_model: int = 64,
         nhead: int = 4,
         num_layers: int = 2,
-        dropout: float = 0.1
+        dropout: float = 0.1,
+        max_len: int = 512
     ):
         super().__init__()
-        self.d_input = 1 + d_freq + d_time + d_var  # 1 for raw scalar value
+        self.d_input = 1 + d_freq + d_var
         self.d_model = d_model
 
         # Learnable embeddings
         self.freq_embedding = nn.Embedding(freq_vocab_size, d_freq)
-        self.time_embedding = nn.Embedding(time_vocab_size, d_time)
         self.var_embedding = nn.Embedding(var_vocab_size, d_var)
 
-        # Input projection to model dimension
+        # Input projection
         self.input_proj = nn.Linear(self.d_input, d_model)
+
+        # Sinusoidal positional encoding (fixed)
+        pe = get_sinusoidal_encoding(max_len, d_model)
+        self.register_buffer("positional_encoding", pe)
 
         # Transformer encoder
         encoder_layer = TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=dropout, batch_first=True)
@@ -45,33 +58,34 @@ class MixedFrequencyTransformer(nn.Module):
         value_unsqueezed = value.unsqueeze(-1)                # [B, T, 1]
         var_emb = self.var_embedding(var_id)                  # [B, T, d_var]
         freq_emb = self.freq_embedding(freq_id)               # [B, T, d_freq]
-        time_emb = self.time_embedding(time_id)               # [B, T, d_time]
 
-        z = torch.cat([value_unsqueezed, var_emb, freq_emb, time_emb], dim=-1)  # [B, T, d_input]
-        z_proj = self.input_proj(z)                                             # [B, T, d_model]
-        out = self.transformer_encoder(z_proj)                                  # [B, T, d_model]
-        pooled = out.mean(dim=1)                                                # [B, d_model]
-        pred = self.prediction_head(pooled)                                     # [B, 1]
-        return pred.squeeze(-1)                                                 # [B]
+        z = torch.cat([value_unsqueezed, var_emb, freq_emb], dim=-1)  # [B, T, d_input]
+        z_proj = self.input_proj(z)                                   # [B, T, d_model]
+
+        # Add positional encoding
+        pos_enc = self.positional_encoding[:z_proj.size(1), :].unsqueeze(0)  # [1, T, d_model]
+        z_proj = z_proj + pos_enc
+
+        out = self.transformer_encoder(z_proj)                       # [B, T, d_model]
+        pooled = out.mean(dim=1)                                     # [B, d_model]
+        pred = self.prediction_head(pooled)                          # [B, 1]
+        return pred.squeeze(-1)                                      # [B]
 
 
 if __name__ == "__main__":
-    # Dummy vocab sizes
     freq_vocab_size = 3
-    time_vocab_size = 1000
     var_vocab_size = 5
 
     model = MixedFrequencyTransformer(
         freq_vocab_size=freq_vocab_size,
-        time_vocab_size=time_vocab_size,
         var_vocab_size=var_vocab_size,
         d_freq=4,
-        d_time=8,
         d_var=4,
         d_model=64,
         nhead=4,
         num_layers=2,
-        dropout=0.1
+        dropout=0.1,
+        max_len=512
     )
 
     print("\nModel architecture:\n")
