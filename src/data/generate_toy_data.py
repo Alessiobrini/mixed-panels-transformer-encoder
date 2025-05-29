@@ -2,24 +2,37 @@ import pandas as pd
 from pandas.api.types import CategoricalDtype
 import numpy as np
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 import matplotlib.pyplot as plt
 from statsmodels.graphics.tsaplots import plot_acf
 
-def generate_variable_series(
+def generate_mean_reverting_series(
     start: str,
     end: str,
     freq: str,
-    var_names: List[str],
-    mean: float,
-    std: float
+    var_params: Dict[str, Dict[str, float]],
 ) -> pd.DataFrame:
+    """
+    Generates time series for variables following mean-reverting dynamics.
+    
+    var_params: dict of var_name -> {mean, std, phi}
+    """
     dates = pd.date_range(start=start, end=end, freq=freq)
     data = []
 
-    for var in var_names:
-        values = np.random.normal(loc=mean, scale=std, size=len(dates))
-        rows = zip(dates, [var]*len(dates), values, [freq]*len(dates))
+    for var, params in var_params.items():
+        mu = params["mean"]
+        std = params["std"]
+        phi = params["phi"]
+
+        values = [mu]  # Start at mean
+        for _ in range(1, len(dates)):
+            prev = values[-1]
+            noise = np.random.normal(0, std)
+            val = mu + phi * (prev - mu) + noise
+            values.append(val)
+
+        rows = zip(dates, [var] * len(dates), values, [freq] * len(dates))
         data.extend(rows)
 
     return pd.DataFrame(data, columns=["Timestamp", "Variable", "Value", "Frequency"])
@@ -33,8 +46,17 @@ if __name__ == "__main__":
     start_date = "1980-01-01"
     end_date = "2024-12-31"
 
-    df_daily = generate_variable_series(start_date, end_date, "D", ["D1"], mean=5.0, std=1.0)
-    df_monthly = generate_variable_series(start_date, end_date, "ME", ["M1", "M2", "M3"], mean=50.0, std=10.0)
+    daily_vars = {
+        "D1": {"mean": 5.0, "std": 0.5, "phi": 0.7}
+    }
+    monthly_vars = {
+        "M1": {"mean": 6.0, "std": 0.4, "phi": 0.8},
+        "M2": {"mean": 6.5, "std": 0.6, "phi": 0.75},
+        "M3": {"mean": 5.5, "std": 0.3, "phi": 0.9}
+    }
+
+    df_daily = generate_mean_reverting_series(start_date, end_date, "D", daily_vars)
+    df_monthly = generate_mean_reverting_series(start_date, end_date, "ME", monthly_vars)
 
     # Compute quarterly averages for lags
     df_d1_q = df_daily[df_daily["Variable"] == "D1"].copy()
@@ -48,7 +70,7 @@ if __name__ == "__main__":
     # Create synthetic Y with temporal memory
     quarterly_index = pd.date_range(start=start_date, end=end_date, freq="Q")
     y_values = []
-    y_prev = 200.0  # Initial Y_0 baseline
+    y_prev = 10.0  # Initial Y_0 baseline
 
     for q_date in quarterly_index:
         q_str = q_date.to_period("Q")
@@ -56,7 +78,7 @@ if __name__ == "__main__":
         m1_lag = avg_m1_q.get(q_str - 1, np.nan)
         if pd.isna(d1_lag) or pd.isna(m1_lag):
             continue
-        noise = np.random.normal(loc=0.0, scale=5.0)
+        noise = np.random.normal(loc=0.0, scale=0.02)
         y = 0.5 * y_prev + 0.3 * d1_lag + 0.2 * m1_lag + noise
         y_values.append([q_date, "Y", y, "QE"])
         y_prev = y
@@ -85,19 +107,13 @@ if __name__ == "__main__":
     df_all.to_csv(output_path, index=False)
     print(f"Toy dataset with memory saved to {output_path.resolve()}")
 
-
-
-    # -------------------------------
-    # Correlogram of Y (Autocorrelation)
-    # -------------------------------
+    # Autocorrelation of Y
     y_series = df_quarterly.set_index("Timestamp")["Value"]
     plot_acf(y_series.dropna(), lags=20)
     plt.title("Autocorrelation of Y")
+    plt.show()
 
-
-    # -------------------------------
     # Correlation with other variables
-    # -------------------------------
     pivot_df = df_all.pivot(index="Timestamp", columns="Variable", values="Value")
     correlation_matrix = pivot_df.corr()
     print("Correlation with Y:")
