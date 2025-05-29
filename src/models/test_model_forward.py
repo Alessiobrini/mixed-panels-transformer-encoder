@@ -16,29 +16,28 @@ from torch import nn
 # Load dataset
 csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
 dataset = MixedFrequencyDataset(csv_path)
-dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_batch)  # smaller batch for testing
+dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_batch)
+
+# Get a batch
+batch = next(iter(dataloader))
 
 # Vocab sizes
-time_vocab_size = int(dataset.time_ids.max()) + 1
 freq_vocab_size = len(dataset.freq_map)
 var_vocab_size = len(dataset.var_map)
+max_len = batch["value"].shape[1]  # sequence length (T)
 
-# Initialize model
+# Initialize model with sinusoidal position encoding
 model = MixedFrequencyTransformer(
     freq_vocab_size=freq_vocab_size,
-    time_vocab_size=time_vocab_size,
     var_vocab_size=var_vocab_size,
+    max_len=max_len,
     d_freq=4,
-    d_time=8,
     d_var=4,
     d_model=64
 )
 
 # Loss function
 criterion = nn.MSELoss()
-
-# Get a batch
-batch = next(iter(dataloader))
 
 # Sanity check
 print("value shape:", batch["value"].shape)       # [B, T]

@@ -107,8 +107,8 @@ if __name__ == "__main__":
     pos_enc = model.positional_encoding.cpu().detach().numpy()  # [max_len, d_model]
 
     # Plot heatmap for first N positions and dimensions
-    N_pos = 1000  # first 100 positions
-    D_dim = 64    # first 32 dimensions (for visibility)
+    N_pos = 100  # first 100 positions
+    D_dim = 32    # first 32 dimensions (for visibility)
     
     plt.figure(figsize=(10, 6))
     plt.imshow(pos_enc[:N_pos, :D_dim], aspect='auto', cmap='viridis')

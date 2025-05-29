@@ -17,7 +17,7 @@ from src.data.utils import collate_batch
 # Config
 # ------------------------
 BATCH_SIZE = 8
-EPOCHS = 200
+EPOCHS = 2
 LEARNING_RATE = 5e-4
 CONTEXT_DAYS = 600
 TARGET = "Y"
@@ -42,14 +42,19 @@ train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, c
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
 
 # ------------------------
+# Determine max_len for positional encoding
+# ------------------------
+example_batch = next(iter(train_loader))
+max_len = example_batch["value"].shape[1]
+
+# ------------------------
 # Model
 # ------------------------
 model = MixedFrequencyTransformer(
     freq_vocab_size=len(full_dataset.freq_map),
-    time_vocab_size=int(full_dataset.time_ids.max()) + 1,
     var_vocab_size=len(full_dataset.var_map),
+    max_len=max_len,
     d_freq=4,
-    d_time=8,
     d_var=4,
     d_model=64
 )
