@@ -53,3 +53,34 @@ class MixedFrequencyTransformer(nn.Module):
         pooled = out.mean(dim=1)                                                # [B, d_model]
         pred = self.prediction_head(pooled)                                     # [B, 1]
         return pred.squeeze(-1)                                                 # [B]
+
+
+if __name__ == "__main__":
+    # Dummy vocab sizes
+    freq_vocab_size = 3
+    time_vocab_size = 1000
+    var_vocab_size = 5
+
+    model = MixedFrequencyTransformer(
+        freq_vocab_size=freq_vocab_size,
+        time_vocab_size=time_vocab_size,
+        var_vocab_size=var_vocab_size,
+        d_freq=4,
+        d_time=8,
+        d_var=4,
+        d_model=64,
+        nhead=4,
+        num_layers=2,
+        dropout=0.1
+    )
+
+    print("\nModel architecture:\n")
+    print(model)
+
+    print("\nParameter summary:\n")
+    total_params = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"{name:40} | {tuple(param.shape)} | {param.numel()} params")
+            total_params += param.numel()
+    print(f"\nTotal trainable parameters: {total_params:,}")
