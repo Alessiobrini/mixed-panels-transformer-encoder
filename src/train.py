@@ -16,10 +16,10 @@ from src.data.utils import collate_batch
 # ------------------------
 # Config
 # ------------------------
-BATCH_SIZE = 8
-EPOCHS = 2
+BATCH_SIZE = 16
+EPOCHS = 4
 LEARNING_RATE = 5e-4
-CONTEXT_DAYS = 600
+CONTEXT_DAYS = 200
 TARGET = "Y"
 
 # ------------------------
@@ -107,15 +107,18 @@ with torch.no_grad():
         preds.extend(pred.tolist())
         targets.extend(batch["target"].tolist())
 
+
+# Inverse transform predictions and targets using the existing scaler
+scaler = full_dataset.scaler
+preds_unscaled = scaler.inverse_transform(torch.tensor(preds).reshape(-1, 1)).flatten()
+targets_unscaled = scaler.inverse_transform(torch.tensor(targets).reshape(-1, 1)).flatten()
+
+
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))
-plt.plot(targets, label="True", marker='o')
-plt.plot(preds, label="Predicted", marker='x')
+plt.plot(targets_unscaled, label="True", marker='o')
+plt.plot(preds_unscaled, label="Predicted", marker='x')
 plt.legend()
-plt.title("Model Forecasts vs True Targets")
+plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
-plt.ylabel("Scaled Target Value")
-plt.grid()
-plt.tight_layout()
-plt.savefig(project_root / "forecast_vs_true.png")
-plt.show()
+plt.ylabel("Original Target Value")
