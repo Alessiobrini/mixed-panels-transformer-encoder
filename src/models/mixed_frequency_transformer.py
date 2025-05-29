@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+import matplotlib.pyplot as plt
 
 
 def get_sinusoidal_encoding(seq_len, d_model):
@@ -85,7 +86,7 @@ if __name__ == "__main__":
         nhead=4,
         num_layers=2,
         dropout=0.1,
-        max_len=512
+        max_len=1000
     )
 
     print("\nModel architecture:\n")
@@ -98,3 +99,21 @@ if __name__ == "__main__":
             print(f"{name:40} | {tuple(param.shape)} | {param.numel()} params")
             total_params += param.numel()
     print(f"\nTotal trainable parameters: {total_params:,}")
+
+
+
+
+    # Extract and detach positional encodings from the model
+    pos_enc = model.positional_encoding.cpu().detach().numpy()  # [max_len, d_model]
+
+    # Plot heatmap for first N positions and dimensions
+    N_pos = 1000  # first 100 positions
+    D_dim = 64    # first 32 dimensions (for visibility)
+    
+    plt.figure(figsize=(10, 6))
+    plt.imshow(pos_enc[:N_pos, :D_dim], aspect='auto', cmap='viridis')
+    plt.colorbar(label="Encoding Value")
+    plt.xlabel("Encoding Dimension")
+    plt.ylabel("Position Index")
+    plt.title("Sinusoidal Positional Encodings (Heatmap)")
+    
