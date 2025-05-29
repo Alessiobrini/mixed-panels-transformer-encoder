@@ -79,7 +79,8 @@ class MixedFrequencyDataset(Dataset):
     
             result.append({
                 "context": context_df,
-                "target_value": float(row[self.value_column])
+                "target_value": float(row["scaled_value"])
+
             })
     
         return result

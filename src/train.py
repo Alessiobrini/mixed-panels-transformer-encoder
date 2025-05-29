@@ -17,9 +17,9 @@ from src.data.utils import collate_batch
 # Config
 # ------------------------
 BATCH_SIZE = 8
-EPOCHS = 5
-LEARNING_RATE = 1e-3
-CONTEXT_DAYS = 100
+EPOCHS = 200
+LEARNING_RATE = 5e-4
+CONTEXT_DAYS = 600
 TARGET = "Y"
 
 # ------------------------
