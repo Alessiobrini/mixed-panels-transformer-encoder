@@ -12,20 +12,6 @@ def generate_variable_series(
     mean: float,
     std: float
 ) -> pd.DataFrame:
-    """
-    Generic generator for any frequency and variable list.
-
-    Parameters:
-        - start: start date string (e.g., '2022-01-01')
-        - end: end date string (e.g., '2022-12-31')
-        - freq: pandas frequency string ('D', 'M', 'Q', etc.)
-        - var_names: list of variable names to generate
-        - mean: average value of the variable
-        - std: standard deviation
-
-    Returns:
-        - DataFrame in long format with Timestamp, Variable, Value, Frequency
-    """
     dates = pd.date_range(start=start, end=end, freq=freq)
     data = []
 
@@ -37,8 +23,8 @@ def generate_variable_series(
     return pd.DataFrame(data, columns=["Timestamp", "Variable", "Value", "Frequency"])
 
 if __name__ == "__main__":
-    
-    project_root = Path(__file__).resolve().parent.parent.parent  # go up from src/data to root
+
+    project_root = Path(__file__).resolve().parent.parent.parent
     output_dir = project_root / "data" / "raw"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -47,61 +33,52 @@ if __name__ == "__main__":
 
     df_daily = generate_variable_series(start_date, end_date, "D", ["D1"], mean=5.0, std=1.0)
     df_monthly = generate_variable_series(start_date, end_date, "ME", ["M1", "M2", "M3"], mean=50.0, std=10.0)
-    # df_quarterly = generate_variable_series(start_date, end_date, "QE", ["Y"], mean=200.0, std=30.0)
-    
-    
-    # Compute quarterly averages
+
+    # Compute quarterly averages for lags
     df_d1_q = df_daily[df_daily["Variable"] == "D1"].copy()
     df_d1_q["Quarter"] = df_d1_q["Timestamp"].dt.to_period("Q")
     avg_d1_q = df_d1_q.groupby("Quarter")["Value"].mean()
-    
+
     df_m1_q = df_monthly[df_monthly["Variable"] == "M1"].copy()
     df_m1_q["Quarter"] = df_m1_q["Timestamp"].dt.to_period("Q")
     avg_m1_q = df_m1_q.groupby("Quarter")["Value"].mean()
-    
-    # Create synthetic Y
-    quarterly_index = pd.date_range(start=start_date, end=end_date, freq="QE")
+
+    # Create synthetic Y with temporal memory
+    quarterly_index = pd.date_range(start=start_date, end=end_date, freq="Q")
     y_values = []
-    
+    y_prev = 200.0  # Initial Y_0 baseline
+
     for q_date in quarterly_index:
         q_str = q_date.to_period("Q")
-        d1_avg = avg_d1_q.get(q_str, np.nan)
-        m1_avg = avg_m1_q.get(q_str, np.nan)
-        if pd.isna(d1_avg) or pd.isna(m1_avg):
+        d1_lag = avg_d1_q.get(q_str - 1, np.nan)
+        m1_lag = avg_m1_q.get(q_str - 1, np.nan)
+        if pd.isna(d1_lag) or pd.isna(m1_lag):
             continue
         noise = np.random.normal(loc=0.0, scale=5.0)
-        y = 0.6 * d1_avg + 0.4 * m1_avg + noise
+        y = 0.5 * y_prev + 0.3 * d1_lag + 0.2 * m1_lag + noise
         y_values.append([q_date, "Y", y, "QE"])
-    
+        y_prev = y
+
     df_quarterly = pd.DataFrame(y_values, columns=["Timestamp", "Variable", "Value", "Frequency"])
-    
-    
 
     (df_daily.sort_values("Timestamp")
      .to_csv(output_dir / "toy_daily.csv", index=False))
-    
     (df_monthly.sort_values("Timestamp")
      .to_csv(output_dir / "toy_monthly.csv", index=False))
-    
     (df_quarterly.sort_values("Timestamp")
      .to_csv(output_dir / "toy_quarterly.csv", index=False))
-    
 
     df_all = pd.concat([df_daily, df_monthly, df_quarterly], axis=0)
-    
-    # Enforce variable order for consistent sorting
+
     var_order = CategoricalDtype(
-        categories=["D1", "M1", "M2", "M3", "Y"], 
+        categories=["D1", "M1", "M2", "M3", "Y"],
         ordered=True
     )
     df_all["Variable"] = df_all["Variable"].astype(var_order)
-    
-    # Sort by timestamp, then variable order
     df_all = df_all.sort_values(["Timestamp", "Variable"]).reset_index(drop=True)
-
 
     processed_dir = project_root / "data" / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
     output_path = processed_dir / "toy_mixed_frequency_long.csv"
     df_all.to_csv(output_path, index=False)
-    print(f"Toy dataset saved to {output_path.resolve()}")
+    print(f"Toy dataset with memory saved to {output_path.resolve()}")
