@@ -17,9 +17,9 @@ from src.data.utils import collate_batch
 # Config
 # ------------------------
 BATCH_SIZE = 16
-EPOCHS = 50
-LEARNING_RATE = 5e-4
-CONTEXT_DAYS = 90
+EPOCHS = 250
+LEARNING_RATE = 1e-4
+CONTEXT_DAYS = 120
 TARGET = "Y"
 
 # ------------------------
@@ -56,7 +56,9 @@ model = MixedFrequencyTransformer(
     max_len=max_len,
     d_freq=4,
     d_var=4,
-    d_model=64
+    d_model=32,
+    nhead=2,
+    dropout=0.00
 )
 
 criterion = nn.MSELoss()
@@ -142,3 +144,4 @@ plt.legend()
 plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
 plt.ylabel("Original Target Value")
+plt.savefig(project_root / "forecast_vs_true.png")
