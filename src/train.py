@@ -1,0 +1,147 @@
+import sys
+import torch
+from pathlib import Path
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+from torch import nn
+
+# Setup path
+project_root = Path(__file__).resolve().parents[1]
+sys.path.append(str(project_root))
+
+from src.data.mixed_frequency_dataset import MixedFrequencyDataset
+from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
+from src.data.utils import collate_batch
+
+# ------------------------
+# Config
+# ------------------------
+BATCH_SIZE = 16
+EPOCHS = 250
+LEARNING_RATE = 1e-4
+CONTEXT_DAYS = 120
+TARGET = "Y"
+
+# ------------------------
+# Load Dataset
+# ------------------------
+csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
+full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
+
+# Ensure sequential split (no random shuffle)
+n = len(full_dataset)
+train_size = int(0.8 * n)
+test_size = n - train_size
+train_indices = list(range(train_size))
+test_indices = list(range(train_size, n))
+
+train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
+test_dataset = torch.utils.data.Subset(full_dataset, test_indices)
+
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_batch)
+
+# ------------------------
+# Determine max_len for positional encoding
+# ------------------------
+example_batch = next(iter(train_loader))
+max_len = example_batch["value"].shape[1]
+
+# ------------------------
+# Model
+# ------------------------
+model = MixedFrequencyTransformer(
+    freq_vocab_size=len(full_dataset.freq_map),
+    var_vocab_size=len(full_dataset.var_map),
+    max_len=max_len,
+    d_freq=4,
+    d_var=4,
+    d_model=32,
+    nhead=2,
+    dropout=0.00
+)
+
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+# ------------------------
+# Training Loop
+# ------------------------
+print("Starting training...")
+model.train()
+
+for epoch in range(1, EPOCHS + 1):
+    total_train_loss = 0.0
+
+    # ---- Training Phase ----
+    model.train()
+    for batch in train_loader:
+        pred = model(
+            value=batch["value"],
+            var_id=batch["var_id"],
+            freq_id=batch["freq_id"],
+        )
+        target = batch["target"]
+        loss = criterion(pred, target)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_train_loss += loss.item()
+
+    avg_train_loss = total_train_loss / len(train_loader)
+
+    # ---- Evaluation Phase ----
+    model.eval()
+    total_test_loss = 0.0
+    with torch.no_grad():
+        for batch in test_loader:
+            pred = model(
+                value=batch["value"],
+                var_id=batch["var_id"],
+                freq_id=batch["freq_id"],
+            )
+            target = batch["target"]
+            loss = criterion(pred, target)
+            total_test_loss += loss.item()
+
+    avg_test_loss = total_test_loss / len(test_loader)
+
+    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.4f} | Test Loss = {avg_test_loss:.4f}")
+
+
+print("Training complete.")
+
+# ------------------------
+# Evaluation & Plot
+# ------------------------
+model.eval()
+preds, targets = [], []
+
+with torch.no_grad():
+    for batch in test_loader:
+        pred = model(
+            value=batch["value"],
+            var_id=batch["var_id"],
+            freq_id=batch["freq_id"],
+        )
+        preds.extend(pred.tolist())
+        targets.extend(batch["target"].tolist())
+
+
+# Inverse transform predictions and targets using the existing scaler
+scaler = full_dataset.scaler
+preds_unscaled = scaler.inverse_transform(torch.tensor(preds).reshape(-1, 1)).flatten()
+targets_unscaled = scaler.inverse_transform(torch.tensor(targets).reshape(-1, 1)).flatten()
+
+
+# Plot predictions vs. targets
+plt.figure(figsize=(10, 6))
+plt.plot(targets_unscaled, label="True", marker='o')
+plt.plot(preds_unscaled, label="Predicted", marker='x')
+plt.legend()
+plt.title("Model Forecasts vs True Targets (Unscaled)")
+plt.xlabel("Sample")
+plt.ylabel("Original Target Value")
+plt.savefig(project_root / "forecast_vs_true.png")
