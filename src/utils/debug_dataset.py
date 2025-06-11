@@ -14,7 +14,7 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 # Config
 # -------------------
 CSV_PATH = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
-CONTEXT_DAYS = 90
+CONTEXT_DAYS = 100
 TARGET_VARIABLE = "Y"
 
 # -------------------

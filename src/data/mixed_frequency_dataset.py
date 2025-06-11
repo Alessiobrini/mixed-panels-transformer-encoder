@@ -64,15 +64,25 @@ class MixedFrequencyDataset(Dataset):
         for _, row in target_rows.iterrows():
             target_time_id = row["time_id"]
             context_start = target_time_id - self.context_days
-            context_end = target_time_id  # exclusive
+            # context_end = target_time_id  # exclusive
+            context_end = self.df[
+                                (self.df[self.variable_column] == self.target_variable) &
+                                (self.df["time_id"] < target_time_id)
+                            ]["time_id"].max()
+
     
             if context_start < 0:
                 continue  # Not enough history to build context
     
             # Extract context window
+            # context_df = self.df[
+            #     (self.df["time_id"] >= context_start) & (self.df["time_id"] < context_end)
+            # ]
             context_df = self.df[
-                (self.df["time_id"] >= context_start) & (self.df["time_id"] < context_end)
+                (self.df["time_id"] >= context_end - self.context_days) & 
+                (self.df["time_id"] < context_end)
             ]
+
     
             if context_df.empty:
                 continue  # Skip if context has no data
