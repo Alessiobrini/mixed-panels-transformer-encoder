@@ -4,6 +4,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torch import nn
+import random
+import numpy as np
 
 # Setup path
 project_root = Path(__file__).resolve().parents[1]
@@ -13,19 +15,31 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.data.utils import collate_batch
 
+# Reproducibility settings
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+
 # ------------------------
 # Config
 # ------------------------
-BATCH_SIZE = 16
-EPOCHS = 250
+BATCH_SIZE = 8
+EPOCHS = 50
 LEARNING_RATE = 1e-4
-CONTEXT_DAYS = 120
-TARGET = "Y"
+CONTEXT_DAYS = 180
+# TARGET = "Y"
+TARGET = "INDPRO"
 
 # ------------------------
 # Load Dataset
 # ------------------------
-csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
+# csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
+csv_path = project_root / "data" / "processed" / "long_format_fred.csv"
+
 full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
 
 # Ensure sequential split (no random shuffle)
@@ -144,4 +158,4 @@ plt.legend()
 plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
 plt.ylabel("Original Target Value")
-plt.savefig(project_root / "forecast_vs_true.png")
+# plt.savefig(project_root / "forecast_vs_true.png")

@@ -39,8 +39,8 @@ def create_long_format_FRED(md_path: Path, qd_path: Path, monthly_vars: list, qu
     # Ensure M comes before Q for the same timestamp
     freq_order = {'M': 0, 'Q': 1}
     long_df['FreqSort'] = long_df['Frequency'].map(freq_order)
-
-    long_df = long_df.sort_values(['Timestamp', 'FreqSort']).drop(columns='FreqSort').reset_index(drop=True)
+    
+    long_df = long_df.sort_values(['Timestamp', 'FreqSort', 'Variable']).drop(columns='FreqSort').reset_index(drop=True)
 
     return long_df
 
