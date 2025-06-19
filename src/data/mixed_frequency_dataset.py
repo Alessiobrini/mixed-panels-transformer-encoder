@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Union, Dict, List
 from sklearn.preprocessing import StandardScaler
+import pdb
 
 class MixedFrequencyDataset(Dataset):
     """
@@ -24,7 +25,7 @@ class MixedFrequencyDataset(Dataset):
         target_variable: str = "Y"
     ):
         self.df = pd.read_csv(csv_path, parse_dates=[time_column])
-        self.df = self.df.sort_values(time_column).reset_index(drop=True)
+
 
         self.time_column = time_column
         self.variable_column = variable_column
@@ -56,11 +57,12 @@ class MixedFrequencyDataset(Dataset):
         - Context: the 100-day window before each quarterly Y observation
         - Target: the Y value at that quarterly timestamp
         """
+        
         result = []
     
         # Identify all rows where the target variable appears (i.e., Y observations)
         target_rows = self.df[self.df[self.variable_column] == self.target_variable]
-    
+
         for _, row in target_rows.iterrows():
             target_time_id = row["time_id"]
             context_start = target_time_id - self.context_days
@@ -70,17 +72,14 @@ class MixedFrequencyDataset(Dataset):
                                 (self.df["time_id"] < target_time_id)
                             ]["time_id"].max()
 
-    
+ 
             if context_start < 0:
                 continue  # Not enough history to build context
     
             # Extract context window
-            # context_df = self.df[
-            #     (self.df["time_id"] >= context_start) & (self.df["time_id"] < context_end)
-            # ]
             context_df = self.df[
                 (self.df["time_id"] >= context_end - self.context_days) & 
-                (self.df["time_id"] < context_end)
+                (self.df["time_id"] <= context_end)
             ]
 
     
@@ -94,8 +93,7 @@ class MixedFrequencyDataset(Dataset):
             })
     
         return result
-
-
+    
     def __len__(self) -> int:
         return len(self.sequence_windows)
 
