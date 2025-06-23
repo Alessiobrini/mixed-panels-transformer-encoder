@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torch import nn
 import random
 import numpy as np
+import pandas as pd
 
 # Setup path
 project_root = Path(__file__).resolve().parents[1]
@@ -149,6 +150,11 @@ scaler = full_dataset.scaler
 preds_unscaled = scaler.inverse_transform(torch.tensor(preds).reshape(-1, 1)).flatten()
 targets_unscaled = scaler.inverse_transform(torch.tensor(targets).reshape(-1, 1)).flatten()
 
+results_df = pd.DataFrame({
+    "target": targets_unscaled,
+    "predicted": preds_unscaled
+})
+results_df.to_csv(project_root / "outputs" / "transformer_preds.csv", index=False)
 
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))
