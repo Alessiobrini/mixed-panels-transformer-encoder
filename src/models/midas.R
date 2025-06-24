@@ -95,8 +95,9 @@ for(i in seq_len(n_test)) {
 
 # 7) Gather results
 results <- tibble(
-  date      = time(y_test),
-  actual    = as.numeric(y_test),
+  date = as.Date(paste0(floor(time(y_test)), "-", 
+                        format(3 * cycle(y_test), width = 2, flag = "0"), "-01")),
+  target    = as.numeric(y_test),
   predicted = preds
 )
 
@@ -106,15 +107,15 @@ print(results)
 write_csv(results, "outputs/midas_preds_3vars.csv")
 
 
-# 7) Plot Out‐of‐Sample Actual vs Predicted
+# 7) Plot Out‐of‐Sample Target vs Predicted
 library(ggplot2)
 
 ggplot(results, aes(x = date)) +
-  geom_line(aes(y = actual,    color = "Actual"),    size = 1) +
+  geom_line(aes(y = target,    color = "Target"),    size = 1) +
   geom_line(aes(y = predicted, color = "Predicted"), size = 1, linetype = "dashed") +
-  scale_color_manual(name = "", values = c("Actual" = "blue", "Predicted" = "red")) +
+  scale_color_manual(name = "", values = c("Target" = "blue", "Predicted" = "red")) +
   labs(
-    title = "Out‐of‐Sample: Actual vs Predicted",
+    title = "Out‐of‐Sample: Target vs Predicted",
     x     = "Quarter",
     y     = "INDPRO"
   ) +
