@@ -8,6 +8,7 @@ import random
 import numpy as np
 import pandas as pd
 
+
 # Setup path
 project_root = Path(__file__).resolve().parents[1]
 sys.path.append(str(project_root))
@@ -16,8 +17,21 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.data.utils import collate_batch
 
+from src.utils.config import Config
+# ------------------------
+# Config
+# ------------------------
+cfg_path = project_root / "src" / "config" / "cfg.yml"
+config = Config(cfg_path)
+
+SEED = config.training.seed
+BATCH_SIZE = config.training.batch_size
+EPOCHS = config.training.epochs
+LEARNING_RATE = config.training.lr
+CONTEXT_DAYS = config.data.context_days
+TARGET = config.features.target
 # Reproducibility settings
-SEED = 42
+SEED = config.training.seed
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -26,26 +40,15 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
 # ------------------------
-# Config
-# ------------------------
-BATCH_SIZE = 8
-EPOCHS = 10 #50
-LEARNING_RATE = 1e-4
-CONTEXT_DAYS = 180
-# TARGET = "Y"
-TARGET = "INDPRO"
-
-# ------------------------
 # Load Dataset
 # ------------------------
-# csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
-csv_path = project_root / "data" / "processed" / "long_format_fred.csv"
+csv_path = project_root / config.paths.data_processed_long
 
 full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
 
 # Ensure sequential split (no random shuffle)
 n = len(full_dataset)
-train_size = int(0.8 * n)
+train_size = int(config.data.train_ratio * n)
 test_size = n - train_size
 train_indices = list(range(train_size))
 test_indices = list(range(train_size, n))
@@ -161,7 +164,7 @@ results_df = pd.DataFrame({
     "target": targets_unscaled,
     "predicted": preds_unscaled
 })
-results_df.to_csv(project_root / "outputs" / "transformer_preds.csv", index=False)
+results_df.to_csv(project_root / config.paths.outputs.transformer_preds, index=False)
 
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))
@@ -171,4 +174,8 @@ plt.legend()
 plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
 plt.ylabel("Original Target Value")
-# plt.savefig(project_root / "forecast_vs_true.png")
+
+viz_dir = project_root / config.paths.visualization
+viz_dir.mkdir(exist_ok=True, parents=True)
+plt.savefig(viz_dir / "forecast_vs_true.pdf", dpi=300, bbox_inches="tight")
+
