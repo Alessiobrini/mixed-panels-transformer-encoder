@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torch import nn
 import random
 import numpy as np
+import pandas as pd
 
 # Setup path
 project_root = Path(__file__).resolve().parents[1]
@@ -28,7 +29,7 @@ torch.backends.cudnn.deterministic = True
 # Config
 # ------------------------
 BATCH_SIZE = 8
-EPOCHS = 50
+EPOCHS = 10 #50
 LEARNING_RATE = 1e-4
 CONTEXT_DAYS = 180
 # TARGET = "Y"
@@ -149,6 +150,18 @@ scaler = full_dataset.scaler
 preds_unscaled = scaler.inverse_transform(torch.tensor(preds).reshape(-1, 1)).flatten()
 targets_unscaled = scaler.inverse_transform(torch.tensor(targets).reshape(-1, 1)).flatten()
 
+# Extract timestamps corresponding to test targets
+target_mask = full_dataset.df["Variable"] == TARGET
+target_timestamps = full_dataset.df[target_mask]["Timestamp"].reset_index(drop=True)
+test_dates = target_timestamps.iloc[test_indices].reset_index(drop=True)
+
+# Save results with date
+results_df = pd.DataFrame({
+    "date": test_dates,
+    "target": targets_unscaled,
+    "predicted": preds_unscaled
+})
+results_df.to_csv(project_root / "outputs" / "transformer_preds.csv", index=False)
 
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))
