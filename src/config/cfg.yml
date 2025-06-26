@@ -1,15 +1,27 @@
 paths:
-  data_processed_long: data/processed/long_format_fred.csv
+  data_raw_fred_monthly: "data/raw/fred data/transf_md.csv"
+  data_raw_fred_quarterly: "data/raw/fred data/transf_qd.csv"
+  data_processed_long: "data/processed/long_format_fred.csv"
   outputs:
-    transformer_preds: outputs/transformer_preds.csv
-  visualization: src/visualization
+    transformer_preds: "outputs/transformer_preds.csv"
+    ar_preds: "outputs/ar_preds.csv"
+    midas_preds:       "outputs/midas_preds_3vars.csv"
+  visualization: "src/visualization"
+
+
+features:
+  monthly_vars:
+    - CPIAUCSL
+    - PCEPI
+    - UNRATE
+  quarterly_vars:
+    - INDPRO
+  target: INDPRO
 
 data:
   context_days: 180
   train_ratio: 0.8
 
-features:
-  target: INDPRO
 
 training:
   seed: 42
@@ -22,3 +34,15 @@ validation:
   expected_freq:
     M: MS
     Q: 3MS
+    
+model:
+  ar:
+    max_lag: 40
+    
+evaluation:
+  forecast_files:
+    - ar_preds
+    - midas_preds
+    - transformer_preds
+  true_col: target
+  pred_col: predicted
