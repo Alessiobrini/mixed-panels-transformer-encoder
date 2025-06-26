@@ -8,7 +8,7 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 # ------------------------
 # Setup paths and configs
 # ------------------------
-project_root = Path(__file__).resolve().parents[1]
+project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
 DATA_PATH = project_root / "data" / "processed" / "long_format_fred.csv"
