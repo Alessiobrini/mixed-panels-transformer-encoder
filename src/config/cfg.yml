@@ -14,16 +14,16 @@ features:
     - CPIAUCSL
     - PCEPI
     - UNRATE
-    - FEDFUNDS
-    - M1SL
-    - PAYEMS
-    - MANEMP
-    - CUMFNS
-    - RETAILx
-    - BUSINVx
-    - OILPRICEx
-    - TB3MS
-    - VIXCLSx
+    # - FEDFUNDS
+    # - M1SL
+    # - PAYEMS
+    # - MANEMP
+    # - CUMFNS
+    # - RETAILx
+    # - BUSINVx
+    # - OILPRICEx
+    # - TB3MS
+    # - VIXCLSx
   quarterly_vars:
     - INDPRO
   all_monthly:    true
@@ -44,6 +44,11 @@ validation:
     Q: 3MS
 
 model:
+  transformer:
+    d_model: 32
+    nhead: 2
+    num_layers: 2
+    dropout: 0.0
   ar:
     max_lag: 40
   midas:

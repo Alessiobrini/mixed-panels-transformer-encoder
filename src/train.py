@@ -86,16 +86,28 @@ max_len = max(seq_lens)
 # ------------------------
 # Model
 # ------------------------
+tv = len(full_dataset.var_map)
+tf = len(full_dataset.freq_map)
+
+# log2 heuristic
+def emb_dim(vocab_size):
+    return min(50, int(np.ceil(np.log2(vocab_size))))
+
+d_freq = emb_dim(tf)
+d_var  = emb_dim(tv)
+
 model = MixedFrequencyTransformer(
-    freq_vocab_size=len(full_dataset.freq_map),
-    var_vocab_size=len(full_dataset.var_map),
+    freq_vocab_size=tf,
+    var_vocab_size=tv,
     max_len=max_len,
-    d_freq=4,
-    d_var=4,
-    d_model=32,
-    nhead=2,
-    dropout=0.00
+    d_freq=d_freq,
+    d_var=d_var,
+    d_model=config.model.transformer.d_model,
+    nhead=config.model.transformer.nhead,
+    num_layers=config.model.transformer.num_layers,
+    dropout=config.model.transformer.dropout,
 )
+
 
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
