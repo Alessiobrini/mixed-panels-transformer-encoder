@@ -1,6 +1,7 @@
 
 /outputs
 /figs
+/src/visualization/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -50,3 +51,6 @@ conda_env/
 
 # Environment tracking
 pip-log.txt
+
+.RData
+.Rhistory
