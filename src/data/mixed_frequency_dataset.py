@@ -61,7 +61,12 @@ class MixedFrequencyDataset(Dataset):
         result = []
     
         # Identify all rows where the target variable appears (i.e., Y observations)
-        target_rows = self.df[self.df[self.variable_column] == self.target_variable]
+        # target_rows = self.df[self.df[self.variable_column] == self.target_variable]
+        target_rows = self.df[
+                        (self.df[self.variable_column] == self.target_variable) &
+                        (self.df[self.freq_column] == 'Q')
+                    ]
+
 
         for _, row in target_rows.iterrows():
             target_time_id = row["time_id"]

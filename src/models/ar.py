@@ -4,26 +4,48 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from src.utils.config import Config
 
 # ------------------------
-# Setup paths and configs
+# Setup project root & load config
 # ------------------------
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
+cfg_path = project_root / "src" / "config" / "cfg.yml"
+config = Config(cfg_path)
 
-DATA_PATH = project_root / "data" / "processed" / "long_format_fred.csv"
-OUTPUT_PATH = project_root / "outputs"
-TARGET_VAR = "INDPRO"
-TRAIN_SPLIT = 0.8
-MAX_LAG = 40  # for BIC-based lag selection
+raw_md_path   = project_root / config.paths.data_raw_fred_monthly
+md_cols       = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
+if config.features.all_monthly:
+    monthly_vars = [c for c in md_cols if c != 'date']
+    target_var   = config.features.target
+    quarterly_vars = [target_var]  # always include target as quarterly
+    # if target_var in monthly_vars:
+    #     monthly_vars.remove(target_var)
+else:
+    monthly_vars   = config.features.monthly_vars
+    quarterly_vars = config.features.quarterly_vars
+suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"
+
+# Paths driven by suffix
+DATA_PATH   = project_root / config.paths.data_processed_template.format(suffix=suffix)
+OUTPUT_FILE = project_root / config.paths.outputs.ar_preds.format(suffix=suffix)
+
+TARGET_VAR  = config.features.target
+TRAIN_SPLIT = config.data.train_ratio
+MAX_LAG     = config.model.ar.max_lag
 
 # ------------------------
 # Load and preprocess data
 # ------------------------
 def load_target_series(df, target_var):
-    """Extracts the target series sorted by time."""
-    target_df = df[df["Variable"] == target_var].sort_values("Timestamp")
+    """Extracts the quarterly target series sorted by time."""
+    target_df = df[
+        (df["Variable"] == target_var) &
+        (df["Frequency"] == "Q")
+    ].sort_values("Timestamp")
     return target_df[["Timestamp", "Value"]].reset_index(drop=True)
+
 
 # ------------------------
 # Fit AR model with optimal lag (based on BIC)
@@ -52,12 +74,14 @@ if __name__ == "__main__":
 
     ar_preds, selected_lag, selection, model = fit_ar_with_optimal_lag(y_train, y_test, MAX_LAG)
 
-    OUTPUT_PATH.mkdir(exist_ok=True)
+    # Write predictions CSV
+    OUTPUT_FILE.parent.mkdir(exist_ok=True, parents=True)
     pd.DataFrame({
         "date": test_dates,
         "target": y_test.values,
         "predicted": ar_preds.values
-    }).to_csv(OUTPUT_PATH / "ar_preds.csv", index=False)
+    }).to_csv(OUTPUT_FILE, index=False)
+    print(f"Saved AR forecasts to: {OUTPUT_FILE.resolve()}")
 
     # Plot predictions vs. true values
     plt.figure(figsize=(10, 6))

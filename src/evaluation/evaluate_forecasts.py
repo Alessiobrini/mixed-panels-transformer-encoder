@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from dieboldmariano import dm_test
 import matplotlib.dates as mdates
+from src.utils.config import Config
 import pdb
 
 # ------------------------
@@ -12,10 +13,21 @@ import pdb
 # ------------------------
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
-OUTPUT_DIR = project_root / "outputs"
-FORECAST_FILES = ["ar_preds.csv", "midas_preds_3vars.csv", "transformer_preds.csv"]
-TRUE_COL = "target"
-PRED_COL = "predicted"
+
+# Load config
+cfg_path = project_root / "src" / "config" / "cfg.yml"
+config = Config(cfg_path)
+
+# Build list of forecast‐CSV paths
+suffix = f"{len(config.features.monthly_vars)}M_{len(config.features.quarterly_vars)}Q"
+FORECAST_PATHS = [
+    project_root / getattr(config.paths.outputs, f).format(suffix=suffix)
+    for f in config.evaluation.forecast_files
+]
+
+
+TRUE_COL = config.evaluation.true_col
+PRED_COL = config.evaluation.pred_col
 
 # ------------------------
 # Functions
@@ -27,7 +39,6 @@ def load_forecasts(file_path):
 def compute_rmse(df, true_vals):
     rmse = ((df.sub(true_vals, axis=0)) ** 2).mean().pow(0.5)
     return rmse.to_frame(name="RMSE")
-
 
 def run_dm_tests(df, true_vals):
     results = {}
@@ -45,27 +56,32 @@ def run_dm_tests(df, true_vals):
                 print(f"DM test failed for {col1} vs {col2}: {e}")
     return pd.DataFrame(results).T
 
-
-
-
 def plot_rmse(rmse_series):
-    rmse_series.plot(kind="bar", figsize=(8, 5), ylabel="RMSE", title="Forecast RMSE Comparison")
+    rmse_series.plot(
+        kind="bar",
+        figsize=(8, 5),
+        ylabel="RMSE",
+        title="Forecast RMSE Comparison"
+    )
     plt.tight_layout()
     plt.show()
 
 def plot_forecasts_with_target(true_vals, preds_df):
     plt.figure(figsize=(10, 6))
+    plt.plot(true_vals.index, true_vals,
+             label="Actual", color="black", linewidth=2, alpha=0.7)
 
-    # Plot true values: solid black with transparency
-    plt.plot(true_vals.index, true_vals, label="Actual", color="black", linewidth=2, alpha=0.7)
-
-    # Use distinct markers for each prediction series
     markers = ['o', 's', '^', 'D', 'v', 'P', '*']
     for i, col in enumerate(preds_df.columns):
-        plt.plot(preds_df.index, preds_df[col], label=col,
-                 marker=markers[i % len(markers)], linestyle="solid", markersize=5)
+        plt.plot(
+            preds_df.index,
+            preds_df[col],
+            label=col,
+            marker=markers[i % len(markers)],
+            linestyle="solid",
+            markersize=5
+        )
 
-    # Format x-axis: fewer ticks and rotation
     plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=8))
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     plt.xticks(rotation=45, ha='right')
@@ -77,19 +93,17 @@ def plot_forecasts_with_target(true_vals, preds_df):
     plt.tight_layout()
     plt.grid(True, linestyle='--', alpha=0.3)
 
-
-
-
 if __name__ == "__main__":
-
-    dfs = [load_forecasts(OUTPUT_DIR / f) for f in FORECAST_FILES]
+    # Load and merge predictions
+    dfs = [load_forecasts(path) for path in FORECAST_PATHS]
     merged = dfs[0]
     for df in dfs[1:]:
         merged = merged.join(df.drop(columns=TRUE_COL), how="inner")
 
     true = merged[TRUE_COL]
     preds = merged.drop(columns=TRUE_COL)
-    # pdb.set_trace()
+
+    # Compute metrics
     rmse_df = compute_rmse(preds, true)
     dm_results = run_dm_tests(preds, true)
 
@@ -98,6 +112,7 @@ if __name__ == "__main__":
     print("\nDiebold-Mariano Tests:")
     print(dm_results)
 
+    # Plot results
     plot_rmse(rmse_df["RMSE"])
     true.index = pd.to_datetime(true.index)
     preds.index = pd.to_datetime(preds.index)

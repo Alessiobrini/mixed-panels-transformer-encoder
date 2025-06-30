@@ -7,6 +7,9 @@ from torch import nn
 import random
 import numpy as np
 import pandas as pd
+from src.data.utils import collate_batch
+import pdb
+
 
 # Setup path
 project_root = Path(__file__).resolve().parents[1]
@@ -16,8 +19,21 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.data.utils import collate_batch
 
+from src.utils.config import Config
+# ------------------------
+# Config
+# ------------------------
+cfg_path = project_root / "src" / "config" / "cfg.yml"
+config = Config(cfg_path)
+
+SEED = config.training.seed
+BATCH_SIZE = config.training.batch_size
+EPOCHS = config.training.epochs
+LEARNING_RATE = config.training.lr
+CONTEXT_DAYS = config.data.context_days
+TARGET = config.features.target
 # Reproducibility settings
-SEED = 42
+SEED = config.training.seed
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -25,27 +41,32 @@ torch.use_deterministic_algorithms(True)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
+
 # ------------------------
-# Config
+# Determine which long-format file to load based on config
 # ------------------------
-BATCH_SIZE = 8
-EPOCHS = 10 #50
-LEARNING_RATE = 1e-4
-CONTEXT_DAYS = 180
-# TARGET = "Y"
-TARGET = "INDPRO"
+raw_md_path = project_root / config.paths.data_raw_fred_monthly
+md_cols     = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
+
+if config.features.all_monthly:
+    n_monthly = len([c for c in md_cols if c != 'date'])
+    n_quarterly = len(config.features.quarterly_vars)
+else:
+    n_monthly   = len(config.features.monthly_vars)
+    n_quarterly = len(config.features.quarterly_vars)
+
+suffix   = f"{n_monthly}M_{n_quarterly}Q"
+csv_path = project_root / config.paths.data_processed_template.format(suffix=suffix)
 
 # ------------------------
 # Load Dataset
 # ------------------------
-# csv_path = project_root / "data" / "processed" / "toy_mixed_frequency_long.csv"
-csv_path = project_root / "data" / "processed" / "long_format_fred.csv"
 
 full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
 
 # Ensure sequential split (no random shuffle)
 n = len(full_dataset)
-train_size = int(0.8 * n)
+train_size = int(config.data.train_ratio * n)
 test_size = n - train_size
 train_indices = list(range(train_size))
 test_indices = list(range(train_size, n))
@@ -59,22 +80,34 @@ test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, col
 # ------------------------
 # Determine max_len for positional encoding
 # ------------------------
-example_batch = next(iter(train_loader))
-max_len = example_batch["value"].shape[1]
+seq_lens = [batch["value"].shape[1] for batch in train_loader]
+max_len = max(seq_lens)
 
 # ------------------------
 # Model
 # ------------------------
+tv = len(full_dataset.var_map)
+tf = len(full_dataset.freq_map)
+
+# log2 heuristic
+def emb_dim(vocab_size):
+    return min(50, int(np.ceil(np.log2(vocab_size))))
+
+d_freq = emb_dim(tf)
+d_var  = emb_dim(tv)
+
 model = MixedFrequencyTransformer(
-    freq_vocab_size=len(full_dataset.freq_map),
-    var_vocab_size=len(full_dataset.var_map),
+    freq_vocab_size=tf,
+    var_vocab_size=tv,
     max_len=max_len,
-    d_freq=4,
-    d_var=4,
-    d_model=32,
-    nhead=2,
-    dropout=0.00
+    d_freq=d_freq,
+    d_var=d_var,
+    d_model=config.model.transformer.d_model,
+    nhead=config.model.transformer.nhead,
+    num_layers=config.model.transformer.num_layers,
+    dropout=config.model.transformer.dropout,
 )
+
 
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -91,6 +124,7 @@ for epoch in range(1, EPOCHS + 1):
     # ---- Training Phase ----
     model.train()
     for batch in train_loader:
+        # pdb.set_trace()
         pred = model(
             value=batch["value"],
             var_id=batch["var_id"],
@@ -123,7 +157,7 @@ for epoch in range(1, EPOCHS + 1):
 
     avg_test_loss = total_test_loss / len(test_loader)
 
-    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.4f} | Test Loss = {avg_test_loss:.4f}")
+    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.8f} | Test Loss = {avg_test_loss:.8f}")
 
 
 print("Training complete.")
@@ -161,7 +195,9 @@ results_df = pd.DataFrame({
     "target": targets_unscaled,
     "predicted": preds_unscaled
 })
-results_df.to_csv(project_root / "outputs" / "transformer_preds.csv", index=False)
+out_path = project_root / config.paths.outputs.transformer_preds.format(suffix=suffix)
+results_df.to_csv(out_path, index=False)
+print(f"Saved transformer predictions to: {out_path.resolve()}")
 
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))
@@ -171,4 +207,9 @@ plt.legend()
 plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
 plt.ylabel("Original Target Value")
-# plt.savefig(project_root / "forecast_vs_true.png")
+
+# Save figure using the same suffix as the data file
+viz_dir = project_root / config.paths.visualization
+viz_dir.mkdir(exist_ok=True, parents=True)
+fig_path = viz_dir / f"forecast_vs_true_{suffix}.pdf"
+plt.savefig(fig_path, dpi=300, bbox_inches="tight")

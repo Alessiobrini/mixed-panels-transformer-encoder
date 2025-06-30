@@ -1,0 +1,70 @@
+paths:
+  data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
+  data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
+  data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
+  outputs:
+    transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
+    ar_preds:              "outputs/ar_preds_{suffix}.csv"
+    midas_preds:           "outputs/midas_preds_{suffix}.csv"
+  visualization:           "src/visualization"
+
+features:
+  target:         INDPRO
+  monthly_vars:
+    - CPIAUCSL
+    - PCEPI
+    - UNRATE
+    # - FEDFUNDS
+    # - M1SL
+    # - PAYEMS
+    # - MANEMP
+    # - CUMFNS
+    # - RETAILx
+    # - BUSINVx
+    # - OILPRICEx
+    # - TB3MS
+    # - VIXCLSx
+  quarterly_vars:
+    - INDPRO
+  all_monthly:    false
+
+data:
+  context_days: 180
+  train_ratio:  0.8
+
+training:
+  seed:       42
+  batch_size: 8
+  epochs:     50
+  lr:         1.0e-4
+
+validation:
+  expected_freq:
+    M: MS
+    Q: 3MS
+
+model:
+  transformer:
+    d_model: 32
+    nhead: 6
+    num_layers: 2
+    dropout: 0.0
+  ar:
+    max_lag: 40
+  midas:
+    lags:
+      - 0
+      - 1
+      - 2
+      - 3
+
+
+evaluation:
+  forecast_files:
+    - ar_preds
+    - midas_preds
+    - transformer_preds
+  true_col: target
+  pred_col: predicted
+
+# ← make sure there’s a blank line at the end
