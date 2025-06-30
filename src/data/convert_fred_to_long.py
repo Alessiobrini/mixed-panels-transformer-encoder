@@ -17,35 +17,52 @@ def create_long_format_FRED(
     Transforms selected monthly and quarterly variables into a unified long-format DataFrame,
     preserving natural frequencies and ordering quarterly entries after monthly ones on the same date.
     """
+    # Load raw CSVs
     md = pd.read_csv(md_path, parse_dates=['date'])
     qd = pd.read_csv(qd_path, parse_dates=['date'])
 
-    md_filtered = md[['date'] + monthly_vars].dropna(subset=monthly_vars)
-    qd_filtered = qd[['date'] + quarterly_vars].dropna(subset=quarterly_vars)
-
-    md_long = md_filtered.melt(
+    # Melt monthly and drop missing per variable
+    md_melt = md.melt(
         id_vars='date',
+        value_vars=monthly_vars,
         var_name='Variable',
         value_name='Value'
     )
-    qd_long = qd_filtered.melt(
+    md_long = (
+        md_melt
+        .dropna(subset=['Value'])
+        .assign(Frequency='M')
+    )
+
+    # Melt quarterly and drop missing per variable
+    qd_melt = qd.melt(
         id_vars='date',
+        value_vars=quarterly_vars,
         var_name='Variable',
         value_name='Value'
     )
+    qd_long = (
+        qd_melt
+        .dropna(subset=['Value'])
+        .assign(Frequency='Q')
+    )
 
-    md_long['Frequency'] = 'M'
-    qd_long['Frequency'] = 'Q'
-
+    # Combine and rename
     long_df = pd.concat([md_long, qd_long], ignore_index=True)
     long_df.rename(columns={'date': 'Timestamp'}, inplace=True)
 
+    # Sorting keys: frequency order then variable order
     freq_order = {'M': 0, 'Q': 1}
     long_df['FreqSort'] = long_df['Frequency'].map(freq_order)
+    # Preserve the exact order you listed in the config
+    var_order = {var: idx for idx, var in enumerate(monthly_vars + quarterly_vars)}
+    long_df['VarOrder'] = long_df['Variable'].map(var_order)
+
+    # Final sort and cleanup
     long_df = (
         long_df
-        .sort_values(['Timestamp', 'FreqSort', 'Variable'])
-        .drop(columns='FreqSort')
+        .sort_values(['Timestamp', 'FreqSort', 'VarOrder'])
+        .drop(columns=['FreqSort', 'VarOrder'])
         .reset_index(drop=True)
     )
 

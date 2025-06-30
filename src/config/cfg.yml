@@ -26,7 +26,7 @@ features:
     - VIXCLSx
   quarterly_vars:
     - INDPRO
-  all_monthly:    false
+  all_monthly:    true
 
 data:
   context_days: 180
