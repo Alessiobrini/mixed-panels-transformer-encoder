@@ -7,6 +7,8 @@ from torch import nn
 import random
 import numpy as np
 import pandas as pd
+from src.data.utils import collate_batch
+import pdb
 
 
 # Setup path
@@ -39,10 +41,26 @@ torch.use_deterministic_algorithms(True)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
+
+# ------------------------
+# Determine which long-format file to load based on config
+# ------------------------
+raw_md_path = project_root / config.paths.data_raw_fred_monthly
+md_cols     = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
+
+if config.features.all_monthly:
+    n_monthly   = len([c for c in md_cols if c != 'date'])
+    n_quarterly = 0
+else:
+    n_monthly   = len(config.features.monthly_vars)
+    n_quarterly = len(config.features.quarterly_vars)
+
+suffix   = f"{n_monthly}M_{n_quarterly}Q"
+csv_path = project_root / config.paths.data_processed_template.format(suffix=suffix)
+
 # ------------------------
 # Load Dataset
 # ------------------------
-csv_path = project_root / config.paths.data_processed_long
 
 full_dataset = MixedFrequencyDataset(csv_path, context_days=CONTEXT_DAYS, target_variable=TARGET)
 
@@ -62,8 +80,8 @@ test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, col
 # ------------------------
 # Determine max_len for positional encoding
 # ------------------------
-example_batch = next(iter(train_loader))
-max_len = example_batch["value"].shape[1]
+seq_lens = [batch["value"].shape[1] for batch in train_loader]
+max_len = max(seq_lens)
 
 # ------------------------
 # Model
@@ -94,6 +112,7 @@ for epoch in range(1, EPOCHS + 1):
     # ---- Training Phase ----
     model.train()
     for batch in train_loader:
+        # pdb.set_trace()
         pred = model(
             value=batch["value"],
             var_id=batch["var_id"],
@@ -126,7 +145,7 @@ for epoch in range(1, EPOCHS + 1):
 
     avg_test_loss = total_test_loss / len(test_loader)
 
-    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.4f} | Test Loss = {avg_test_loss:.4f}")
+    print(f"Epoch {epoch:2d} - Train Loss = {avg_train_loss:.8f} | Test Loss = {avg_test_loss:.8f}")
 
 
 print("Training complete.")
@@ -175,7 +194,8 @@ plt.title("Model Forecasts vs True Targets (Unscaled)")
 plt.xlabel("Sample")
 plt.ylabel("Original Target Value")
 
+# Save figure using the same suffix as the data file
 viz_dir = project_root / config.paths.visualization
 viz_dir.mkdir(exist_ok=True, parents=True)
-plt.savefig(viz_dir / "forecast_vs_true.pdf", dpi=300, bbox_inches="tight")
-
+fig_path = viz_dir / f"forecast_vs_true_{suffix}.pdf"
+plt.savefig(fig_path, dpi=300, bbox_inches="tight")
