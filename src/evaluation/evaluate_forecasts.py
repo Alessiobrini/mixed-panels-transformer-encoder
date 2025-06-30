@@ -19,10 +19,12 @@ cfg_path = project_root / "src" / "config" / "cfg.yml"
 config = Config(cfg_path)
 
 # Build list of forecast‐CSV paths
+suffix = f"{len(config.features.monthly_vars)}M_{len(config.features.quarterly_vars)}Q"
 FORECAST_PATHS = [
-    project_root / getattr(config.paths.outputs, f)
+    project_root / getattr(config.paths.outputs, f).format(suffix=suffix)
     for f in config.evaluation.forecast_files
 ]
+
 
 TRUE_COL = config.evaluation.true_col
 PRED_COL = config.evaluation.pred_col
