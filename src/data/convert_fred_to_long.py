@@ -82,11 +82,15 @@ if __name__ == "__main__":
 
     # Build the variable lists
     if config.features.all_monthly:
-        monthly_vars   = [c for c in md_cols if c != 'date']
-        quarterly_vars = []
+        monthly_vars = [c for c in md_cols if c != 'date']
+        target_var   = config.features.target
+        quarterly_vars = [target_var]  # always include target as quarterly
+        # if target_var in monthly_vars:
+        #     monthly_vars.remove(target_var)
     else:
         monthly_vars   = config.features.monthly_vars
         quarterly_vars = config.features.quarterly_vars
+
 
     # Create an informative suffix: e.g. "3M_1Q"
     suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"

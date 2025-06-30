@@ -17,8 +17,11 @@ config = Config(cfg_path)
 raw_md_path   = project_root / config.paths.data_raw_fred_monthly
 md_cols       = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
 if config.features.all_monthly:
-    monthly_vars   = [c for c in md_cols if c != 'date']
-    quarterly_vars = []
+    monthly_vars = [c for c in md_cols if c != 'date']
+    target_var   = config.features.target
+    quarterly_vars = [target_var]  # always include target as quarterly
+    # if target_var in monthly_vars:
+    #     monthly_vars.remove(target_var)
 else:
     monthly_vars   = config.features.monthly_vars
     quarterly_vars = config.features.quarterly_vars
@@ -36,9 +39,13 @@ MAX_LAG     = config.model.ar.max_lag
 # Load and preprocess data
 # ------------------------
 def load_target_series(df, target_var):
-    """Extracts the target series sorted by time."""
-    target_df = df[df["Variable"] == target_var].sort_values("Timestamp")
+    """Extracts the quarterly target series sorted by time."""
+    target_df = df[
+        (df["Variable"] == target_var) &
+        (df["Frequency"] == "Q")
+    ].sort_values("Timestamp")
     return target_df[["Timestamp", "Value"]].reset_index(drop=True)
+
 
 # ------------------------
 # Fit AR model with optimal lag (based on BIC)

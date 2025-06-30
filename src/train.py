@@ -49,8 +49,8 @@ raw_md_path = project_root / config.paths.data_raw_fred_monthly
 md_cols     = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
 
 if config.features.all_monthly:
-    n_monthly   = len([c for c in md_cols if c != 'date'])
-    n_quarterly = 0
+    n_monthly = len([c for c in md_cols if c != 'date'])
+    n_quarterly = len(config.features.quarterly_vars)
 else:
     n_monthly   = len(config.features.monthly_vars)
     n_quarterly = len(config.features.quarterly_vars)

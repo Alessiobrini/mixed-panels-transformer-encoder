@@ -26,7 +26,7 @@ features:
     # - VIXCLSx
   quarterly_vars:
     - INDPRO
-  all_monthly:    true
+  all_monthly:    false
 
 data:
   context_days: 180
@@ -35,7 +35,7 @@ data:
 training:
   seed:       42
   batch_size: 8
-  epochs:     10
+  epochs:     50
   lr:         1.0e-4
 
 validation:
@@ -46,7 +46,7 @@ validation:
 model:
   transformer:
     d_model: 32
-    nhead: 2
+    nhead: 6
     num_layers: 2
     dropout: 0.0
   ar:
@@ -57,14 +57,7 @@ model:
       - 1
       - 2
       - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-      - 9
-      - 10
-      - 11
+
 
 evaluation:
   forecast_files:
