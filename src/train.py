@@ -195,7 +195,9 @@ results_df = pd.DataFrame({
     "target": targets_unscaled,
     "predicted": preds_unscaled
 })
-results_df.to_csv(project_root / config.paths.outputs.transformer_preds, index=False)
+out_path = project_root / config.paths.outputs.transformer_preds.format(suffix=suffix)
+results_df.to_csv(out_path, index=False)
+print(f"Saved transformer predictions to: {out_path.resolve()}")
 
 # Plot predictions vs. targets
 plt.figure(figsize=(10, 6))

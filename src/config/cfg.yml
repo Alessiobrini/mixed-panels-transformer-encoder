@@ -1,11 +1,11 @@
 paths:
-  data_raw_fred_monthly:   "data/raw/fred data/transf_md.csv"
-  data_raw_fred_quarterly: "data/raw/fred data/transf_qd.csv"
+  data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
+  data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
   data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
   outputs:
-    transformer_preds:     "outputs/transformer_preds.csv"
-    ar_preds:              "outputs/ar_preds.csv"
-    midas_preds:           "outputs/midas_preds_3vars.csv"
+    transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
+    ar_preds:              "outputs/ar_preds_{suffix}.csv"
+    midas_preds:           "outputs/midas_preds_{suffix}.csv"
   visualization:           "src/visualization"
 
 features:

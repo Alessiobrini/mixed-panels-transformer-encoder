@@ -5,14 +5,20 @@ library(zoo)
 library(lubridate)
 library(tidyr)
 library(yaml)
+library(glue)
 
-# —— Config & Load data —— 
-config         <- yaml::read_yaml("src/config/cfg.yml")
-data_path      <- config$paths$data_processed_long
+# —— Config & Load data ——
+config <- yaml::read_yaml("src/config/cfg.yml")
+
 monthly_vars   <- config$features$monthly_vars
 quarterly_vars <- config$features$quarterly_vars
 lags           <- config$model$midas$lags
-output_file    <- config$paths$outputs$midas_preds
+
+suffix <- paste0(length(monthly_vars), "M_", length(quarterly_vars), "Q")
+
+# Fix filepaths from template
+data_path   <- as.character(glue(config$paths$data_processed_template, suffix = suffix))
+output_file <- as.character(glue(config$paths$outputs$midas_preds, suffix = suffix))
 
 # 1) Load & prep data
 df <- read_csv(data_path, show_col_types = FALSE)
@@ -34,27 +40,19 @@ quarterly <- df %>%
   arrange(Timestamp)
 
 # 2) Build ts objects
-cpi_ts <- ts(
-  monthly$CPIAUCSL,
-  start     = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
-  frequency = 12
-)
-pce_ts <- ts(
-  monthly$PCEPI,
-  start     = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
-  frequency = 12
-)
-unr_ts <- ts(
-  monthly$UNRATE,
-  start     = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
-  frequency = 12
-)
+cpi_ts <- ts(monthly$CPIAUCSL,
+             start = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
+             frequency = 12)
+pce_ts <- ts(monthly$PCEPI,
+             start = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
+             frequency = 12)
+unr_ts <- ts(monthly$UNRATE,
+             start = c(year(min(monthly$Timestamp)), month(min(monthly$Timestamp))),
+             frequency = 12)
 
-ind_ts <- ts(
-  quarterly$Value,
-  start     = c(year(min(quarterly$Timestamp)), quarter(min(quarterly$Timestamp))),
-  frequency = 4
-)
+ind_ts <- ts(quarterly$Value,
+             start = c(year(min(quarterly$Timestamp)), quarter(min(quarterly$Timestamp))),
+             frequency = 4)
 
 # 3) Train/test split (80/20) on quarterly series
 n       <- length(ind_ts)
@@ -116,7 +114,7 @@ write_csv(results, output_file)
 
 # 9) Plot Out‐of‐Sample Target vs Predicted
 library(ggplot2)
-ggplot(results, aes(x = date)) +
+plot_obj <- ggplot(results, aes(x = date)) +
   geom_line(aes(y = target,    color = "Target"),    size = 1) +
   geom_line(aes(y = predicted, color = "Predicted"), size = 1, linetype = "dashed") +
   scale_color_manual(name = "", values = c("Target" = "blue", "Predicted" = "red")) +
@@ -130,3 +128,6 @@ ggplot(results, aes(x = date)) +
     legend.position = "bottom",
     axis.text.x     = element_text(angle = 45, hjust = 1)
   )
+
+print(plot_obj)
+
