@@ -15,7 +15,7 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
 # Load config
-cfg_path = project_root / "src" / "config" / "cfg.yml"
+cfg_path = project_root / "src" / "config" / "cfg.yaml"
 config = Config(cfg_path)
 
 # Build list of forecast‐CSV paths

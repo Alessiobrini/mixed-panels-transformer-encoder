@@ -11,7 +11,7 @@ from src.utils.config import Config
 # ------------------------
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
-cfg_path = project_root / "src" / "config" / "cfg.yml"
+cfg_path = project_root / "src" / "config" / "cfg.yaml"
 config = Config(cfg_path)
 
 raw_md_path   = project_root / config.paths.data_raw_fred_monthly
