@@ -6,7 +6,7 @@ paths:
     transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
     ar_preds:              "outputs/ar_preds_{suffix}.csv"
     midas_preds:           "outputs/midas_preds_{suffix}.csv"
-  visualization:           "src/visualization"
+  # visualization:           "src/visualization"
 
 features:
   target:         CPILFESL
@@ -31,6 +31,8 @@ features:
 data:
   context_days: 180
   train_ratio:  0.8
+  val_ratio: 0.1
+  
 
 training:
   seed:           42

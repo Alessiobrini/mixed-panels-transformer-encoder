@@ -30,6 +30,33 @@ from src.utils.config import Config
 def emb_dim(vocab_size):
     return min(50, int(np.ceil(np.log2(vocab_size))))
 
+def make_dataloader(dataset, indices, batch_size, collate_fn):
+    return DataLoader(
+        torch.utils.data.Subset(dataset, indices),
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+
+def compute_split_indices(n, train_ratio, val_ratio=0.0, optimize=False):
+    n_total_train = int(train_ratio * n)
+
+    if optimize:
+        n_val = int(val_ratio * n_total_train)
+        n_train = n_total_train - n_val
+
+        return (
+            list(range(n_train)),                                 # train
+            list(range(n_train, n_train + n_val)),                # val (end of train set)
+            list(range(n_total_train, n))                         # test (fixed end of data)
+        )
+    else:
+        return (
+            list(range(n_total_train)),     # train
+            [],                             # val (not used)
+            list(range(n_total_train, n))   # test (fixed end of data)
+        )
+
 
 def prepare_data(csv_path, config):
     full_dataset = MixedFrequencyDataset(
@@ -38,23 +65,28 @@ def prepare_data(csv_path, config):
         target_variable=config.features.target
     )
     n = len(full_dataset)
-    train_size = int(config.data.train_ratio * n)
-    train_indices = list(range(train_size))
-    test_indices = list(range(train_size, n))
 
-    train_loader = DataLoader(
-        torch.utils.data.Subset(full_dataset, train_indices),
-        batch_size=config.training.batch_size,
-        shuffle=False,
-        collate_fn=collate_batch
+    train_ratio = config.data.train_ratio
+    val_ratio = getattr(config.data, 'val_ratio', 0.0)
+    optimize = config.training.optimize
+
+    train_idx, val_idx, test_idx = compute_split_indices(n, train_ratio, val_ratio, optimize)
+
+    train_loader = make_dataloader(full_dataset, train_idx, config.training.batch_size, collate_batch)
+    test_loader  = make_dataloader(full_dataset, test_idx, config.training.batch_size, collate_batch)
+
+    val_loader = (
+        make_dataloader(full_dataset, val_idx, config.training.batch_size, collate_batch)
+        if val_idx else None
     )
-    test_loader = DataLoader(
-        torch.utils.data.Subset(full_dataset, test_indices),
-        batch_size=config.training.batch_size,
-        shuffle=False,
-        collate_fn=collate_batch
-    )
-    return full_dataset, train_loader, test_loader, test_indices
+    print(f"[Split Info] Total: {n} | Train: {len(train_idx)} | Val: {len(val_idx)} | Test: {len(test_idx)}")
+
+    if optimize:
+        return full_dataset, train_loader, val_loader, test_loader, test_idx
+    else:
+        return full_dataset, train_loader, test_loader, test_idx
+    
+
 
 
 def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None):
@@ -152,7 +184,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
     }
 
     # Prepare data
-    full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
+    full_dataset, train_loader, val_loader, test_loader, test_indices = prepare_data(csv_path, config)
 
     # Build model
     model = build_model(
@@ -183,7 +215,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
         model.eval()
         total_test = 0
         with torch.no_grad():
-            for batch in test_loader:
+            for batch in val_loader:
                 out = model(
                     value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
                 )
@@ -210,6 +242,8 @@ def objective(trial, config, csv_path, exp_path, suffix):
 
 def run_standard_training(config, csv_path, exp_path, suffix):
     full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
+
+
     model = build_model(
         full_dataset, config,
         config.model.transformer.d_model,
