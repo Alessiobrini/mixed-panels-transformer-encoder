@@ -1,6 +1,9 @@
 import sys
-import pandas as pd
 from pathlib import Path
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
+
+import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
@@ -9,8 +12,6 @@ from src.utils.config import Config
 # ------------------------
 # Setup project root & load config
 # ------------------------
-project_root = Path(__file__).resolve().parents[2]
-sys.path.append(str(project_root))
 cfg_path = project_root / "src" / "config" / "cfg.yaml"
 config = Config(cfg_path)
 
@@ -83,22 +84,22 @@ if __name__ == "__main__":
     }).to_csv(OUTPUT_FILE, index=False)
     print(f"Saved AR forecasts to: {OUTPUT_FILE.resolve()}")
 
-    # Plot predictions vs. true values
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test.values, label="True", marker='o')
-    plt.plot(ar_preds.values, label="Predicted", marker='x')
-    plt.legend()
-    plt.title(f"AR({selected_lag}) Forecasts vs True Targets (Out-of-Sample)")
-    plt.xlabel("Sample")
-    plt.ylabel("Target Value")
-    plt.tight_layout()
-    plt.show()
+    # # Plot predictions vs. true values
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(y_test.values, label="True", marker='o')
+    # plt.plot(ar_preds.values, label="Predicted", marker='x')
+    # plt.legend()
+    # plt.title(f"AR({selected_lag}) Forecasts vs True Targets (Out-of-Sample)")
+    # plt.xlabel("Sample")
+    # plt.ylabel("Target Value")
+    # plt.tight_layout()
+    # plt.show()
 
-    # Plot ACF and PACF of training series
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6))
-    plot_acf(y_train, lags=MAX_LAG, ax=axes[0])
-    axes[0].set_title("ACF of Training Target")
-    plot_pacf(y_train, lags=MAX_LAG, ax=axes[1])
-    axes[1].set_title("PACF of Training Target")
-    plt.tight_layout()
-    plt.show()
+    # # Plot ACF and PACF of training series
+    # fig, axes = plt.subplots(2, 1, figsize=(10, 6))
+    # plot_acf(y_train, lags=MAX_LAG, ax=axes[0])
+    # axes[0].set_title("ACF of Training Target")
+    # plot_pacf(y_train, lags=MAX_LAG, ax=axes[1])
+    # axes[1].set_title("PACF of Training Target")
+    # plt.tight_layout()
+    # plt.show()

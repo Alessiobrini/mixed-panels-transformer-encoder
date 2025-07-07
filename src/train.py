@@ -79,7 +79,7 @@ def prepare_data(csv_path, config):
         make_dataloader(full_dataset, val_idx, config.training.batch_size, collate_batch)
         if val_idx else None
     )
-    print(f"[Split Info] Total: {n} | Train: {len(train_idx)} | Val: {len(val_idx)} | Test: {len(test_idx)}")
+    # print(f"[Split Info] Total: {n} | Train: {len(train_idx)} | Val: {len(val_idx)} | Test: {len(test_idx)}")
 
     if optimize:
         return full_dataset, train_loader, val_loader, test_loader, test_idx
@@ -227,7 +227,8 @@ def objective(trial, config, csv_path, exp_path, suffix):
         if avg_test < best_loss:
             best_loss = avg_test
             wait = 0
-            torch.save(model.state_dict(), exp_path / 'best_model.pt')
+            trial.set_user_attr("best_model_path", str(exp_path / f'best_model_trial_{trial.number}.pt'))
+            torch.save(model.state_dict(), exp_path / f'best_model_trial_{trial.number}.pt')
         else:
             wait += 1
             if wait >= patience:
@@ -323,19 +324,26 @@ def run_optuna(config, csv_path, exp_path, suffix):
     print(f"Best RMSE: {study.best_value}\nBest params: {best_params}")
 
     # Final evaluation
-    full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
+    full_dataset, train_loader, val_loader, test_loader, test_indices = prepare_data(csv_path, config)
+
     model = build_model(
         full_dataset, config,
         best_params['d_model'], best_params['nhead'],
         best_params['num_layers'], best_params['dropout'],
         train_loader=train_loader
     )
-    model.load_state_dict(torch.load(exp_path / 'best_model.pt'))
+    best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
+    model.load_state_dict(torch.load(best_model_path))
+
     evaluate_and_save(
         model, test_loader, full_dataset,
         test_indices, exp_path, suffix,
         'Forecast vs True (Optimized)'
     )
+    
+    # Save all trials as CSV for analysis
+    trials_df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
+    trials_df.to_csv(exp_path / "optuna_trials.csv", index=False)
 
 # ------------------------
 # Main

@@ -7,6 +7,10 @@ library(tidyr)
 library(yaml)
 library(glue)
 
+# Set working directory to the project root
+setwd("G:/Other computers/Dell Duke/Workfiles/Postdoc_file/peer_review_research/TimeSeriesAttention/mixed-frequency-attention")
+
+
 # —— Config & Load data ——
 config <- yaml::read_yaml("src/config/cfg.yaml")
 
