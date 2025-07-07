@@ -37,7 +37,7 @@ training:
   batch_size:     8
   epochs:         50
   lr:             1.0e-4
-  optimize:       false       # toggle Optuna
+  optimize:       true       # toggle Optuna
   experiment_name: null       # optional, or your custom name
   patience:       5           # optional, early-stopping patience
 
@@ -73,7 +73,8 @@ evaluation:
 
 
 hyperopt:
-  n_trials: 30
+  study_name: null  # optional name for the Optuna study
+  n_trials: 5
   d_model: [16, 32, 64, 128]
   nhead: [2, 4, 6, 8]
   num_layers: [1, 2, 3, 4]

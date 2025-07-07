@@ -57,15 +57,15 @@ def prepare_data(csv_path, config):
     return full_dataset, train_loader, test_loader, test_indices
 
 
-def build_model(full_dataset, config, d_model, nhead, num_layers, dropout):
-    # Determine positional encoding length
-    loader = DataLoader(
-        torch.utils.data.Subset(full_dataset, list(range(int(config.data.train_ratio * len(full_dataset))))),
-        batch_size=config.training.batch_size,
-        shuffle=False,
-        collate_fn=collate_batch
-    )
-    seq_lens = [batch['value'].shape[1] for batch in loader]
+def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None):
+    if train_loader is None:
+        train_loader = DataLoader(
+            torch.utils.data.Subset(full_dataset, list(range(int(config.data.train_ratio * len(full_dataset))))),
+            batch_size=config.training.batch_size,
+            shuffle=False,
+            collate_fn=collate_batch
+        )
+    seq_lens = [batch['value'].shape[1] for batch in train_loader]
     max_len = max(seq_lens)
 
     tv = len(full_dataset.var_map)
@@ -130,22 +130,30 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
 # ------------------------
 
 def objective(trial, config, csv_path, exp_path, suffix):
-    # Sample hyperparameters
+    # Sample d_model first
+    d_model = trial.suggest_categorical('d_model', config.hyperopt.d_model)
+    
+    # Restrict nhead to only valid options given d_model
+    valid_heads = [h for h in config.hyperopt.nhead if d_model % h == 0]
+    if not valid_heads:
+        raise optuna.TrialPruned(f"No valid nhead for d_model={d_model}")
+    
+    # Sample remaining hyperparameters
     params = {
-        'd_model': trial.suggest_categorical('d_model', config.hyperopt.d_model),
-        'nhead': trial.suggest_categorical('nhead', config.hyperopt.nhead),
+        'd_model': d_model,
+        'nhead': trial.suggest_categorical('nhead', valid_heads),
         'num_layers': trial.suggest_int(
             'num_layers', min(config.hyperopt.num_layers), max(config.hyperopt.num_layers)
         ),
         'dropout': trial.suggest_float(
             'dropout', min(config.hyperopt.dropout), max(config.hyperopt.dropout)
         ),
-        'lr': trial.suggest_float(
-            'lr', min(config.hyperopt.lr), max(config.hyperopt.lr), log=True
-        )
+        'lr': trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
     }
+
     # Prepare data
     full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
+
     # Build model
     model = build_model(
         full_dataset, config,
@@ -194,6 +202,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
                 break
 
     return best_loss
+
 
 # ------------------------
 # Training Modes
@@ -270,7 +279,7 @@ def run_optuna(config, csv_path, exp_path, suffix):
         exp_path=exp_path,
         suffix=suffix
     )
-    study = optuna.create_study(direction='minimize')
+    study = optuna.create_study(study_name=config.hyperopt.study_name, direction='minimize')
     study.optimize(algo, n_trials=config.hyperopt.n_trials)
 
     best_params = study.best_trial.params
@@ -280,11 +289,12 @@ def run_optuna(config, csv_path, exp_path, suffix):
     print(f"Best RMSE: {study.best_value}\nBest params: {best_params}")
 
     # Final evaluation
-    full_dataset, _, test_loader, test_indices = prepare_data(csv_path, config)
+    full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
     model = build_model(
         full_dataset, config,
         best_params['d_model'], best_params['nhead'],
-        best_params['num_layers'], best_params['dropout']
+        best_params['num_layers'], best_params['dropout'],
+        train_loader=train_loader
     )
     model.load_state_dict(torch.load(exp_path / 'best_model.pt'))
     evaluate_and_save(
