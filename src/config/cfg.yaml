@@ -56,10 +56,12 @@ model:
     max_lag: 40
   midas:
     lags:
-      - 0
       - 1
       - 2
       - 3
+      - 4
+    ar_lags: 1
+    use_y_lags: false
 
 
 evaluation:
