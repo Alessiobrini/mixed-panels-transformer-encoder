@@ -9,7 +9,7 @@ paths:
   visualization:           "src/visualization"
 
 features:
-  target:         INDPRO
+  target:         CPILFESL
   monthly_vars:
     - CPIAUCSL
     - PCEPI
@@ -25,7 +25,7 @@ features:
     # - TB3MS
     # - VIXCLSx
   quarterly_vars:
-    - INDPRO
+    - CPILFESL
   all_monthly:    false
 
 data:
@@ -33,10 +33,13 @@ data:
   train_ratio:  0.8
 
 training:
-  seed:       42
-  batch_size: 8
-  epochs:     50
-  lr:         1.0e-4
+  seed:           42
+  batch_size:     8
+  epochs:         50
+  lr:             1.0e-4
+  optimize:       false       # toggle Optuna
+  experiment_name: null       # optional, or your custom name
+  patience:       5           # optional, early-stopping patience
 
 validation:
   expected_freq:
@@ -46,7 +49,7 @@ validation:
 model:
   transformer:
     d_model: 32
-    nhead: 6
+    nhead: 2
     num_layers: 2
     dropout: 0.0
   ar:
@@ -66,5 +69,16 @@ evaluation:
     - transformer_preds
   true_col: target
   pred_col: predicted
+  
+
+
+hyperopt:
+  n_trials: 30
+  d_model: [16, 32, 64, 128]
+  nhead: [2, 4, 6, 8]
+  num_layers: [1, 2, 3, 4]
+  dropout: [0.0, 0.1, 0.3, 0.5]
+  lr: [1e-5, 1e-4, 1e-3]
+
 
 # ← make sure there’s a blank line at the end

@@ -70,7 +70,7 @@ def create_long_format_FRED(
 
 if __name__ == "__main__":
     # Setup
-    cfg_path = project_root / "src" / "config" / "cfg.yml"
+    cfg_path = project_root / "src" / "config" / "cfg.yaml"
     config   = Config(cfg_path)
 
     # Paths to raw FRED files

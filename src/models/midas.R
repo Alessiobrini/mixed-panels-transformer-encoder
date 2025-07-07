@@ -8,7 +8,7 @@ library(yaml)
 library(glue)
 
 # —— Config & Load data ——
-config <- yaml::read_yaml("src/config/cfg.yml")
+config <- yaml::read_yaml("src/config/cfg.yaml")
 
 # --- Count all variables present in the raw file, regardless of role ---
 if (isTRUE(config$features$all_monthly)) {
