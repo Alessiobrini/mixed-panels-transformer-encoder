@@ -40,7 +40,7 @@ training:
   epochs:         50
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'test_full_pip'       # optional, or your custom name
+  experiment_name: 'test_full_pip2'       # optional, or your custom name
   patience:       5           # optional, early-stopping patience
 
 validation:
