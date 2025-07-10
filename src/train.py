@@ -174,12 +174,8 @@ def objective(trial, config, csv_path, exp_path, suffix):
     params = {
         'd_model': d_model,
         'nhead': trial.suggest_categorical('nhead', valid_heads),
-        'num_layers': trial.suggest_int(
-            'num_layers', min(config.hyperopt.num_layers), max(config.hyperopt.num_layers)
-        ),
-        'dropout': trial.suggest_float(
-            'dropout', min(config.hyperopt.dropout), max(config.hyperopt.dropout)
-        ),
+        'num_layers': trial.suggest_categorical('num_layers', [float(x) for x in config.hyperopt.num_layers]),
+        'dropout': trial.suggest_categorical('dropout', [float(x) for x in config.hyperopt.dropout]),
         'lr': trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
     }
 
@@ -243,7 +239,6 @@ def objective(trial, config, csv_path, exp_path, suffix):
 
 def run_standard_training(config, csv_path, exp_path, suffix):
     full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
-
 
     model = build_model(
         full_dataset, config,
