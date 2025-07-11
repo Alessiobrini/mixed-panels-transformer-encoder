@@ -9,39 +9,39 @@ paths:
   # visualization:           "src/visualization"
 
 features:
-  target:         CPILFESL
+  target:         UNRATE
   monthly_vars:
     - CPIAUCSL
     - PCEPI
-    - UNRATE
-    # - FEDFUNDS
-    # - M1SL
-    # - PAYEMS
-    # - MANEMP
-    # - CUMFNS
-    # - RETAILx
-    # - BUSINVx
-    # - OILPRICEx
-    # - TB3MS
-    # - VIXCLSx
+    # - UNRATE
+    - FEDFUNDS
+    - M1SL
+    - PAYEMS
+    - MANEMP
+    - CUMFNS
+    - RETAILx
+    - BUSINVx
+    - OILPRICEx
+    - TB3MS
+    - VIXCLSx
   quarterly_vars:
-    - CPILFESL
+    - UNRATE
   all_monthly:    false
 
 data:
-  context_days: 180
+  context_days: 360
   train_ratio:  0.8
   val_ratio: 0.1
   
 
 training:
   seed:           42
-  batch_size:     8
-  epochs:         50
+  batch_size:     16
+  epochs:         300
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'test_full_pip2'       # optional, or your custom name
-  patience:       5           # optional, early-stopping patience
+  experiment_name: 'Test_13_freq_emb'       # optional, or your custom name
+  patience:       10           # optional, early-stopping patience
 
 validation:
   expected_freq:
@@ -50,10 +50,12 @@ validation:
 
 model:
   transformer:
-    d_model: 32
-    nhead: 2
-    num_layers: 2
-    dropout: 0.0
+    d_model: 64
+    nhead: 4
+    num_layers: 4
+    dropout: 0.1
+    d_freq: null       # default: computed via log2
+    d_var: null        # default: computed via log2
   ar:
     max_lag: 40
   midas:
@@ -62,6 +64,8 @@ model:
       - 2
       - 3
       - 4
+      - 5
+      - 6
     ar_lags: 1
     use_y_lags: false
 
@@ -78,12 +82,14 @@ evaluation:
 
 hyperopt:
   study_name: null  # optional name for the Optuna study
-  n_trials: 2
-  d_model: [16, 32, 64, 128]
-  nhead: [2, 4, 6, 8]
-  num_layers: [1, 2, 3, 4]
-  dropout: [0.0, 0.1, 0.3, 0.5]
-  lr: [1e-5, 1e-4, 1e-3]
+  n_trials: 20
+  # d_model: [16, 32, 64, 128, 256, 512]
+  # nhead: [2, 4, 6, 8]
+  # num_layers: [1, 2, 3, 4]
+  # dropout: [0.0, 0.1, 0.3, 0.5]
+  # lr: [1e-5, 1e-4, 1e-3, 5e-4]
+  d_freq: [2, 4, 8, 16, 32, 128]
+  d_var: [4, 8, 16, 32, 64, 128]
 
 
 # ← make sure there’s a blank line at the end

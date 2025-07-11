@@ -27,8 +27,11 @@ from src.utils.config import Config
 # Helpers
 # ------------------------
 
-def emb_dim(vocab_size):
+def emb_dim(vocab_size, override=None):
+    if override is not None:
+        return override
     return min(50, int(np.ceil(np.log2(vocab_size))))
+
 
 def make_dataloader(dataset, indices, batch_size, collate_fn):
     return DataLoader(
@@ -89,7 +92,7 @@ def prepare_data(csv_path, config):
 
 
 
-def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None):
+def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None, d_freq=None, d_var=None):
     if train_loader is None:
         train_loader = DataLoader(
             torch.utils.data.Subset(full_dataset, list(range(int(config.data.train_ratio * len(full_dataset))))),
@@ -102,13 +105,17 @@ def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train
 
     tv = len(full_dataset.var_map)
     tf = len(full_dataset.freq_map)
+    
+    d_freq = emb_dim(tf, override=d_freq if d_freq is not None else getattr(config.model.transformer, 'd_freq', None))
+    d_var  = emb_dim(tv, override=d_var if d_var is not None else getattr(config.model.transformer, 'd_var', None))
 
+    
     return MixedFrequencyTransformer(
         freq_vocab_size=tf,
         var_vocab_size=tv,
         max_len=max_len,
-        d_freq=emb_dim(tf),
-        d_var=emb_dim(tv),
+        d_freq=d_freq,
+        d_var=d_var,
         d_model=d_model,
         nhead=nhead,
         num_layers=num_layers,
@@ -162,32 +169,74 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
 # ------------------------
 
 def objective(trial, config, csv_path, exp_path, suffix):
-    # Sample d_model first
-    d_model = trial.suggest_categorical('d_model', config.hyperopt.d_model)
-    
-    # Restrict nhead to only valid options given d_model
-    valid_heads = [h for h in config.hyperopt.nhead if d_model % h == 0]
-    if not valid_heads:
-        raise optuna.TrialPruned(f"No valid nhead for d_model={d_model}")
-    
-    # Sample remaining hyperparameters
+    # Prepare data early to get vocab sizes
+    full_dataset, train_loader, val_loader, test_loader, test_indices = prepare_data(csv_path, config)
+    tv = len(full_dataset.var_map)
+    tf = len(full_dataset.freq_map)
+
+    # d_model (required for valid nhead)
+    if hasattr(config.hyperopt, 'd_model'):
+        d_model = trial.suggest_categorical('d_model', config.hyperopt.d_model)
+    else:
+        d_model = config.model.transformer.d_model
+
+    # nhead depends on d_model, so adjust its options
+    if hasattr(config.hyperopt, 'nhead'):
+        valid_heads = [h for h in config.hyperopt.nhead if d_model % h == 0]
+        if not valid_heads:
+            raise optuna.TrialPruned(f"No valid nhead for d_model={d_model}")
+        nhead = trial.suggest_categorical('nhead', valid_heads)
+    else:
+        nhead = config.model.transformer.nhead
+
+    # Sample or fallback
     params = {
         'd_model': d_model,
-        'nhead': trial.suggest_categorical('nhead', valid_heads),
-        'num_layers': trial.suggest_categorical('num_layers', [float(x) for x in config.hyperopt.num_layers]),
-        'dropout': trial.suggest_categorical('dropout', [float(x) for x in config.hyperopt.dropout]),
-        'lr': trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
+        'nhead': nhead,
+        'num_layers': (
+            trial.suggest_categorical('num_layers', [int(x) for x in config.hyperopt.num_layers])
+            if hasattr(config.hyperopt, 'num_layers')
+            else config.model.transformer.num_layers
+        ),
+        'dropout': (
+            trial.suggest_categorical('dropout', [float(x) for x in config.hyperopt.dropout])
+            if hasattr(config.hyperopt, 'dropout')
+            else config.model.transformer.dropout
+        ),
+        'lr': (
+            trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
+            if hasattr(config.hyperopt, 'lr')
+            else config.training.lr
+        ),
+        'd_freq': (
+            trial.suggest_categorical('d_freq', [int(x) for x in config.hyperopt.d_freq])
+            if hasattr(config.hyperopt, 'd_freq')
+            else getattr(config.model.transformer, 'd_freq', emb_dim(tf))
+        ),
+        'd_var': (
+            trial.suggest_categorical('d_var', [int(x) for x in config.hyperopt.d_var])
+            if hasattr(config.hyperopt, 'd_var')
+            else getattr(config.model.transformer, 'd_var', emb_dim(tv))
+        )
     }
 
-    # Prepare data
-    full_dataset, train_loader, val_loader, test_loader, test_indices = prepare_data(csv_path, config)
+
+    print(f"[Trial {trial.number}] Sampled or default hyperparameters:")
+    for k, v in params.items():
+        print(f"  {k}: {v}")
+
 
     # Build model
     model = build_model(
         full_dataset, config,
         params['d_model'], params['nhead'],
-        params['num_layers'], params['dropout']
+        params['num_layers'], params['dropout'],
+        train_loader=train_loader,
+        d_freq=params['d_freq'],
+        d_var=params['d_var']
     )
+
+    
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
 
