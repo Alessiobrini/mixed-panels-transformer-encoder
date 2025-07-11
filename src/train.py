@@ -351,6 +351,7 @@ def run_standard_training(config, csv_path, exp_path, suffix):
 
 def run_optuna(config, csv_path, exp_path, suffix):
     print("Starting Optuna optimization...")
+
     algo = partial(
         objective,
         config=config,
@@ -358,7 +359,10 @@ def run_optuna(config, csv_path, exp_path, suffix):
         exp_path=exp_path,
         suffix=suffix
     )
-    study = optuna.create_study(study_name=config.hyperopt.study_name, direction='minimize')
+    study = optuna.create_study(
+        study_name=config.hyperopt.study_name,
+        direction='minimize'
+    )
     study.optimize(algo, n_trials=config.hyperopt.n_trials)
 
     best_params = study.best_trial.params
@@ -369,13 +373,28 @@ def run_optuna(config, csv_path, exp_path, suffix):
 
     # Final evaluation
     full_dataset, train_loader, val_loader, test_loader, test_indices = prepare_data(csv_path, config)
+    tv = len(full_dataset.var_map)
+    tf = len(full_dataset.freq_map)
+
+    complete_params = {
+        'd_model': best_params.get('d_model', config.model.transformer.d_model),
+        'nhead': best_params.get('nhead', config.model.transformer.nhead),
+        'num_layers': best_params.get('num_layers', config.model.transformer.num_layers),
+        'dropout': best_params.get('dropout', config.model.transformer.dropout),
+        'lr': best_params.get('lr', config.training.lr),
+        'd_freq': best_params.get('d_freq', getattr(config.model.transformer, 'd_freq', emb_dim(tf))),
+        'd_var': best_params.get('d_var', getattr(config.model.transformer, 'd_var', emb_dim(tv)))
+    }
 
     model = build_model(
         full_dataset, config,
-        best_params['d_model'], best_params['nhead'],
-        best_params['num_layers'], best_params['dropout'],
-        train_loader=train_loader
+        complete_params['d_model'], complete_params['nhead'],
+        complete_params['num_layers'], complete_params['dropout'],
+        train_loader=train_loader,
+        d_freq=complete_params['d_freq'],
+        d_var=complete_params['d_var']
     )
+
     best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
     model.load_state_dict(torch.load(best_model_path))
 
@@ -384,10 +403,15 @@ def run_optuna(config, csv_path, exp_path, suffix):
         test_indices, exp_path, suffix,
         'Forecast vs True (Optimized)'
     )
-    
-    # Save all trials as CSV for analysis
+
+    # Save all trials for inspection
     trials_df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
     trials_df.to_csv(exp_path / "optuna_trials.csv", index=False)
+
+    # Optionally save the merged config + best params for reproducibility
+    with open(exp_path / 'full_final_params.yaml', 'w') as f:
+        yaml.dump(complete_params, f)
+
 
 # ------------------------
 # Main
