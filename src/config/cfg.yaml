@@ -48,7 +48,19 @@ features:
     - TB3MS
     - TB6MS
   quarterly_vars:
+    - GDPC1
+    - GPDIC1
+    - PCECC96
+    - DPIC96
+    - OUTNFB
     - UNRATE
+    - PCECTPI
+    - PCEPILFE
+    - CPIAUCSL
+    - CPILFESL
+    - FPIx
+    - EXPGSC1
+    - IMPGSC1
   all_monthly:    false
 
 data:
