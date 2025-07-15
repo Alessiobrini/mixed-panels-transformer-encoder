@@ -18,8 +18,8 @@ def create_long_format_FRED(
     preserving natural frequencies and ordering quarterly entries after monthly ones on the same date.
     """
     # Load raw CSVs
-    md = pd.read_csv(md_path, parse_dates=['date'])
-    qd = pd.read_csv(qd_path, parse_dates=['date'])
+    md = pd.read_csv(md_path, parse_dates=['date']).sort_values('date').ffill()
+    qd = pd.read_csv(qd_path, parse_dates=['date']).sort_values('date').ffill()
 
     # Melt monthly and drop missing per variable
     md_melt = md.melt(
