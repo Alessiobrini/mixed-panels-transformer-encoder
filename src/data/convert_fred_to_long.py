@@ -20,6 +20,11 @@ def create_long_format_FRED(
     # Load raw CSVs
     md = pd.read_csv(md_path, parse_dates=['date']).sort_values('date').ffill()
     qd = pd.read_csv(qd_path, parse_dates=['date']).sort_values('date').ffill()
+    
+    md.dropna(subset=monthly_vars, inplace=True)
+    qd.dropna(subset=quarterly_vars, inplace=True)
+
+
 
     # Melt monthly and drop missing per variable
     md_melt = md.melt(
