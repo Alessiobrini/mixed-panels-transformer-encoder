@@ -17,7 +17,6 @@ features:
     - HWI
     - CLF16OV
     - CE16OV
-    - UNRATE
     - UEMPMEAN
     - CLAIMSx
     - PAYEMS
@@ -99,10 +98,10 @@ model:
       - 2
       - 3
       - 4
-      - 5
-      - 6
+      # - 5
+      # - 6
     ar_lags: 1
-    use_y_lags: true
+    use_y_lags: false
 
 
 evaluation:
