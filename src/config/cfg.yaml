@@ -11,19 +11,42 @@ paths:
 features:
   target:         UNRATE
   monthly_vars:
-    - CPIAUCSL
-    - PCEPI
-    # - UNRATE
-    - FEDFUNDS
-    - M1SL
-    - PAYEMS
-    - MANEMP
+    - RPI
+    - INDPRO
     - CUMFNS
-    - RETAILx
+    - HWI
+    - CLF16OV
+    - CE16OV
+    - UNRATE
+    - UEMPMEAN
+    - CLAIMSx
+    - PAYEMS
+    - CES0600000007
+    - CES0600000008
+    - CES2000000008
+    - CES3000000008
+    - AWOTMAN
+    - AWHMAN
+    - HOUST
+    - DPCERA3M086SBEA
     - BUSINVx
+    - RETAILx
+    - CMRMTSPLx
+    - M2REAL
+    - TOTRESNS
+    - BUSLOANS
+    - NONREVSL
+    - FEDFUNDS
+    - GS1
+    - GS10
+    - BAA
+    - PCEPI
+    - WPSFD49207
     - OILPRICEx
+    - S&P 500
+    - S&P PE ratio
     - TB3MS
-    - VIXCLSx
+    - TB6MS
   quarterly_vars:
     - UNRATE
   all_monthly:    false
@@ -35,12 +58,12 @@ data:
   
 
 training:
-  seed:           42
+  seed:           125 #42
   batch_size:     16
   epochs:         300
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'Test_13_freq_emb'       # optional, or your custom name
+  experiment_name: 'Test_13_freq_emb4'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
 validation:
@@ -67,7 +90,7 @@ model:
       - 5
       - 6
     ar_lags: 1
-    use_y_lags: false
+    use_y_lags: true
 
 
 evaluation:
@@ -82,12 +105,12 @@ evaluation:
 
 hyperopt:
   study_name: null  # optional name for the Optuna study
-  n_trials: 20
-  # d_model: [16, 32, 64, 128, 256, 512]
-  # nhead: [2, 4, 6, 8]
-  # num_layers: [1, 2, 3, 4]
-  # dropout: [0.0, 0.1, 0.3, 0.5]
-  # lr: [1e-5, 1e-4, 1e-3, 5e-4]
+  n_trials: 60
+  d_model: [16, 32, 64, 128, 256, 512]
+  nhead: [2, 4, 6, 8]
+  num_layers: [1, 2, 3, 4]
+  dropout: [0.0, 0.1, 0.3, 0.5]
+  lr: [1e-5, 1e-4, 1e-3, 5e-4]
   d_freq: [2, 4, 8, 16, 32, 128]
   d_var: [4, 8, 16, 32, 64, 128]
 
