@@ -19,7 +19,7 @@ commands = [
     [sys.executable, str(scripts["convert_fred"])],
     [sys.executable, str(scripts["train"])],
     [sys.executable, str(scripts["ar"])],
-    [r"C:\Program Files\R\R-4.5.1\bin\Rscript.exe", str(scripts["midas"])],  # <-- Full path here
+    [r"C:\Program Files\R\R-4.5.1\bin\Rscript.exe", str(scripts["midas"])],  # <-- Full path here, change it to your personal path for the .exe
     [sys.executable, str(scripts["evaluate"])]
 ]
 
