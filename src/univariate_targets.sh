@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+#SBATCH --job-name=tsa-experiments
+#SBATCH --partition=gpu-common
+#SBATCH --mem=8G
+#SBATCH --gpus=1
+#SBATCH --output=slurm.out
+#SBATCH --error=slurm.err
+#SBATCH --mail-type=BEGIN,FAIL,END
+#SBATCH --mail-user=alessio.brini@duke.edu
+
+set -e
+set -o pipefail
+
+source ~/.bashrc
+conda activate tsa-dev
+
+# Set project root and move there
+PROJECT_ROOT=$(dirname "$(readlink -f "$0")")/..
+cd "$PROJECT_ROOT"
+
+targets=("GDPC1" "GPDIC1" "PCECC96" "DPIC96")
+CONFIG_PATH="src/config/cfg.yaml"
+PYTHON_RUNNER="src/run_pipeline.py"
+
+for target in "${targets[@]}"
+do
+  echo "==============================="
+  echo "Running experiment for target: $target"
+  echo "==============================="
+
+  python3 - <<EOF
+import yaml
+from pathlib import Path
+
+config_path = Path("$CONFIG_PATH")
+
+with open(config_path, "r") as f:
+    cfg = yaml.safe_load(f)
+
+cfg["features"]["target"] = "$target"
+cfg["training"]["experiment_name"] = "$target"
+
+with open(config_path, "w") as f:
+    yaml.dump(cfg, f, sort_keys=False)
+EOF
+
+  python3 "$PYTHON_RUNNER"
+done
