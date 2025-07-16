@@ -7,8 +7,16 @@ library(tidyr)
 library(yaml)
 library(glue)
 
+
+# Set working directory to the project root
+if (Sys.info()[["sysname"]] == "Windows") {
+  setwd("G:/Other computers/Dell Duke/Workfiles/Postdoc_file/peer_review_research/TimeSeriesAttention/mixed-frequency-attention")
+} else {
+  setwd("/hpc/group/darec/ab978/tsa-dev")
+}
+
 # —— Config & Load data ——
-config <- yaml::read_yaml("src/config/cfg.yml")
+config <- yaml::read_yaml("src/config/cfg.yaml")
 
 # --- Count all variables present in the raw file, regardless of role ---
 if (isTRUE(config$features$all_monthly)) {
@@ -83,14 +91,37 @@ y_train <- window(ind_ts, end = time(ind_ts)[n_train])
 y_test  <- window(ind_ts, start = time(ind_ts)[n_train + 1])
 n_test  <- length(y_test)
 
+# 4b) Optional: create AR terms for y if enabled
+use_y_lags <- isTRUE(config$model$midas$use_y_lags)
+ar_lags    <- config$model$midas$ar_lags
+y_lagged_list <- list()
+
+if (use_y_lags && ar_lags > 0) {
+  for (i in 1:ar_lags) {
+    y_lagged_list[[paste0("lag", i)]] <- stats::lag(y_train, -i)
+  }
+}
+
+
 # 5) Fit MIDAS model using dynamic formula
-terms <- lapply(available_vars, function(v) call("mlsd", as.name(v), lags, quote(y_train)))
+terms <- list()
+
+# Add AR terms if enabled
+if (use_y_lags && ar_lags > 0) {
+  terms <- c(terms, lapply(seq_len(ar_lags), function(i) as.name(paste0("lag", i))))
+}
+
+# Always add MIDAS terms
+terms <- c(terms, lapply(available_vars, function(v) call("mlsd", as.name(v), lags, quote(y_train))))
+
+
 formula <- as.call(c(as.name("~"), quote(y_train), Reduce(function(x, y) call("+", x, y), terms)))
 formula <- eval(formula)  # Evaluate the call into an actual formula object
 environment(formula) <- environment()
 
 
-data_list <- c(list(y_train = y_train), monthly_ts_list)
+data_list <- c(list(y_train = y_train), y_lagged_list, monthly_ts_list)
+
 
 model <- midas_r(
   formula,

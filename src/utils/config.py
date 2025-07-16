@@ -11,7 +11,7 @@ class ConfigNode:
 class Config:
     def __init__(self, path):
         path = Path(path)
-        cfg_dict = yaml.safe_load(path.read_text())
+        cfg_dict = yaml.safe_load(path.read_text(encoding="utf-8"))
         for key, value in cfg_dict.items():
             if isinstance(value, dict):
                 value = ConfigNode(value)

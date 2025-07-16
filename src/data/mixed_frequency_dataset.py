@@ -44,12 +44,29 @@ class MixedFrequencyDataset(Dataset):
         self.df["freq_id"] = self.df[freq_column].map(self.freq_map)
         self.df["var_id"] = self.df[variable_column].map(self.var_map)
 
-        # Standardize values
-        self.scaler = StandardScaler()
-        self.df["scaled_value"] = self.scaler.fit_transform(self.df[[value_column]])
-
+        # Standardize values: one scaler per variable
+        self.scalers = {}
+        scaled_values = []
+        for var in self.df[self.variable_column].unique():
+            mask = self.df[self.variable_column] == var
+            scaler = StandardScaler()
+            scaled_col = scaler.fit_transform(self.df.loc[mask, [value_column]])
+        
+            self.scalers[var] = scaler
+            scaled_values.append(pd.Series(scaled_col.flatten(), index=self.df[mask].index))
+        
+        # Merge all scaled values and assign in original order
+        self.df["scaled_value"] = pd.concat(scaled_values).sort_index()
+        
+        # Keep the scaler for the target variable to use later during inverse transform
+        self.scaler = self.scalers[self.target_variable]
+ 
         # Build list of sequence/target pairs
         self.sequence_windows = self._build_sequence_targets()
+
+    def inverse_transform(self, var_name: str, values: np.ndarray) -> np.ndarray:
+        return self.scalers[var_name].inverse_transform(values.reshape(-1, 1)).flatten()
+
 
     def _build_sequence_targets(self) -> List[Dict]:
         """
@@ -90,7 +107,7 @@ class MixedFrequencyDataset(Dataset):
     
             if context_df.empty:
                 continue  # Skip if context has no data
-    
+ 
             result.append({
                 "context": context_df,
                 "target_value": float(row["scaled_value"])
