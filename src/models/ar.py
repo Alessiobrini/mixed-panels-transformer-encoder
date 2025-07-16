@@ -53,12 +53,18 @@ def load_target_series(df, target_var):
 # ------------------------
 def fit_ar_with_optimal_lag(y_train, y_test, max_lag):
     selection = ar_select_order(y_train, maxlag=max_lag, ic="bic", old_names=False)
-    selected_lag = selection.ar_lags[-1]
-    print(f"Selected lag order (BIC): {selected_lag}")
+    if not selection.ar_lags:
+        print("[INFO] No lag order selected — falling back to AR(0) model (mean predictor).")
+        mean_val = y_train.mean()
+        preds = pd.Series([mean_val] * len(y_test), index=y_test.index)
+        return preds, 0, selection, None
+    else:
+        selected_lag = selection.ar_lags[-1]
+        print(f"Selected lag order (BIC): {selected_lag}")
+        model = AutoReg(y_train, lags=selected_lag).fit()
+        preds = model.predict(start=len(y_train), end=len(y_train) + len(y_test) - 1)
+        return preds, selected_lag, selection, model
 
-    model = AutoReg(y_train, lags=selected_lag).fit()
-    preds = model.predict(start=len(y_train), end=len(y_train) + len(y_test) - 1)
-    return preds, selected_lag, selection, model
 
 # ------------------------
 # Main script
