@@ -23,6 +23,10 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.utils.config import Config
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+
 # ------------------------
 # Helpers
 # ------------------------
@@ -123,7 +127,7 @@ def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train
     )
 
 
-def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, suffix, title):
+def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, suffix, title, device):
     model.eval()
     preds, targets = [], []
     with torch.no_grad():
@@ -352,7 +356,8 @@ def run_standard_training(config, csv_path, exp_path, suffix):
     evaluate_and_save(
         model, test_loader, full_dataset,
         test_indices, exp_path, suffix,
-        'Forecast vs True (Standard)'
+        'Forecast vs True (Standard)',
+        device
     )
 
 
@@ -404,11 +409,14 @@ def run_optuna(config, csv_path, exp_path, suffix):
 
     best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
     model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.to(device)
+
 
     evaluate_and_save(
         model, test_loader, full_dataset,
         test_indices, exp_path, suffix,
-        'Forecast vs True (Optimized)'
+        'Forecast vs True (Optimized)',
+        device
     )
 
     # Save all trials for inspection
@@ -425,9 +433,6 @@ def run_optuna(config, csv_path, exp_path, suffix):
 # ------------------------
 if __name__ == '__main__':
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[Device] Using: {device}")
-
     cfg_path = project_root / 'src' / 'config' / 'cfg.yaml'
     config = Config(cfg_path)
 
