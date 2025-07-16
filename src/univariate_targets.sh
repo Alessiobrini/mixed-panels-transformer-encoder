@@ -19,14 +19,19 @@ conda activate tsa-dev
 PROJECT_ROOT=$(dirname "$(readlink -f "$0")")/..
 cd "$PROJECT_ROOT"
 
+# Today's date in YYYY-MM-DD format
+TODAY=$(date +%F)
+
 targets=("GDPC1" "GPDIC1" "PCECC96" "DPIC96")
 CONFIG_PATH="src/config/cfg.yaml"
 PYTHON_RUNNER="src/run_pipeline.py"
 
 for target in "${targets[@]}"
 do
+  EXP_NAME="${target}_${TODAY}"
+
   echo "==============================="
-  echo "Running experiment for target: $target"
+  echo "Running experiment for: $EXP_NAME"
   echo "==============================="
 
   python3 - <<EOF
@@ -39,7 +44,7 @@ with open(config_path, "r") as f:
     cfg = yaml.safe_load(f)
 
 cfg["features"]["target"] = "$target"
-cfg["training"]["experiment_name"] = "$target"
+cfg["training"]["experiment_name"] = "$EXP_NAME"
 
 with open(config_path, "w") as f:
     yaml.dump(cfg, f, sort_keys=False)
