@@ -128,6 +128,7 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
     preds, targets = [], []
     with torch.no_grad():
         for batch in test_loader:
+            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
                 value=batch['value'],
                 var_id=batch['var_id'],
@@ -235,6 +236,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
         d_freq=params['d_freq'],
         d_var=params['d_var']
     )
+    model.to(device)
 
     
     criterion = nn.MSELoss()
@@ -248,6 +250,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
     for epoch in range(1, config.training.epochs + 1):
         model.train()
         for batch in train_loader:
+            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
                 value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
             )
@@ -261,6 +264,7 @@ def objective(trial, config, csv_path, exp_path, suffix):
         total_test = 0
         with torch.no_grad():
             for batch in val_loader:
+                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
                     value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
                 )
@@ -296,6 +300,7 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         config.model.transformer.num_layers,
         config.model.transformer.dropout
     )
+    model.to(device)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.training.lr)
 
@@ -308,6 +313,7 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         model.train()
         total_train = 0
         for batch in train_loader:
+            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
                 value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
             )
@@ -323,6 +329,7 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         total_test = 0
         with torch.no_grad():
             for batch in test_loader:
+                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
                     value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
                 )
@@ -341,7 +348,7 @@ def run_standard_training(config, csv_path, exp_path, suffix):
                 print(f"Early stopping at epoch {epoch}")
                 break
 
-    model.load_state_dict(torch.load(exp_path / 'best_model.pt'))
+    model.load_state_dict(torch.load(exp_path / 'best_model.pt', map_location=device))
     evaluate_and_save(
         model, test_loader, full_dataset,
         test_indices, exp_path, suffix,
@@ -396,7 +403,7 @@ def run_optuna(config, csv_path, exp_path, suffix):
     )
 
     best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
-    model.load_state_dict(torch.load(best_model_path))
+    model.load_state_dict(torch.load(best_model_path, map_location=device))
 
     evaluate_and_save(
         model, test_loader, full_dataset,
@@ -417,6 +424,10 @@ def run_optuna(config, csv_path, exp_path, suffix):
 # Main
 # ------------------------
 if __name__ == '__main__':
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[Device] Using: {device}")
+
     cfg_path = project_root / 'src' / 'config' / 'cfg.yaml'
     config = Config(cfg_path)
 
