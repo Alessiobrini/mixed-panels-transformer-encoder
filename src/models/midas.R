@@ -7,9 +7,13 @@ library(tidyr)
 library(yaml)
 library(glue)
 
-# Set working directory to the project root
-setwd("G:/Other computers/Dell Duke/Workfiles/Postdoc_file/peer_review_research/TimeSeriesAttention/mixed-frequency-attention")
 
+# Set working directory to the project root
+if (Sys.info()[["sysname"]] == "Windows") {
+  setwd("G:/Other computers/Dell Duke/Workfiles/Postdoc_file/peer_review_research/TimeSeriesAttention/mixed-frequency-attention")
+} else {
+  setwd("/hpc/group/darec/ab978/tsa-dev")
+}
 
 # —— Config & Load data ——
 config <- yaml::read_yaml("src/config/cfg.yaml")
