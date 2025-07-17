@@ -74,7 +74,7 @@ training:
   epochs:         300
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'Test1'       # optional, or your custom name
+  experiment_name: 'Test2'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
 validation:
@@ -127,7 +127,7 @@ hyperopt:
   lr: [1e-5, 3e-5, 1e-4, 3e-4, 5e-4, 1e-3]
   d_freq: [2, 4, 8, 16, 32, 128]
   d_var: [4, 8, 16, 32, 64, 128]
-  dim_feedforward: [[32, 64, 128, 256, 512, 1024, 2048, 4096]
+  dim_feedforward: [32, 64, 128, 256, 512, 1024, 2048, 4096]
   activation: ["relu", "gelu"]
   
 

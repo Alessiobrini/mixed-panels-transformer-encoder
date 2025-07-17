@@ -22,7 +22,7 @@ cd "$PROJECT_ROOT"
 # Today's date in YYYY-MM-DD format
 TODAY=$(date +%F)
 
-targets=("GDPC1" "GPDIC1" "PCECC96" "DPIC96")
+targets = ("GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE", "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL", "FPIx", "EXPGSC1", "IMPGSC1")
 CONFIG_PATH="src/config/cfg.yaml"
 PYTHON_RUNNER="src/run_pipeline.py"
 
