@@ -14,6 +14,7 @@ set -o pipefail
 
 source ~/.bashrc
 conda activate tsa-dev
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 # Set project root and move there
 PROJECT_ROOT=$(dirname "$(readlink -f "$0")")/..

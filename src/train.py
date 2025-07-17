@@ -450,6 +450,18 @@ def run_optuna(config, csv_path, exp_path, suffix):
         yaml.dump(complete_params, f)
 
 
+    # Clean up all but best model checkpoint
+    print("Cleaning up non-best model checkpoints...")
+    best_trial_number = study.best_trial.number
+    for path in exp_path.glob("best_model_trial_*.pt"):
+        trial_num = int(path.stem.split("_")[-1])
+        if trial_num != best_trial_number:
+            try:
+                path.unlink()
+            except Exception as e:
+                print(f"Failed to delete {path.name}: {e}")
+
+
 # ------------------------
 # Main
 # ------------------------
