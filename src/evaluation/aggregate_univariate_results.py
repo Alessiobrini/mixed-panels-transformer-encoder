@@ -81,4 +81,31 @@ df_dm.set_index(["target", "date", "comparison"], inplace=True)
 df_metrics = pd.DataFrame(prediction_metrics)
 df_metrics.set_index(["target", "date", "model", "period"], inplace=True)
 
+# --- Analyze model performance: count how often each model is best ---
+print("\n=== Model performance summary: number of times each model is best per metric and period ===")
+
+# Reset index for groupby
+df_flat = df_metrics.reset_index()
+df_flat = df_flat[df_flat["model"] != "ar"]
+metric_names = ["RMSE", "MAE", "MAPE"]
+win_counts = {metric: {} for metric in metric_names}
+
+for metric in metric_names:
+    grouped = df_flat.groupby(["target", "date", "period"])
+
+    best_models = grouped.apply(lambda g: g.loc[g[metric].idxmin(), "model"], include_groups=False)
+
+    counts = best_models.groupby([best_models.index.get_level_values("period"), best_models]).size()
+    
+    for (period, model), count in counts.items():
+        if model not in win_counts[metric]:
+            win_counts[metric][model] = {}
+        win_counts[metric][model][period] = count
+
+# Print formatted results
+for metric, data in win_counts.items():
+    df_result = pd.DataFrame(data).fillna(0).astype(int).T  # models as index
+    df_result.columns.name = "Period"
+    print(f"\n=== Best model counts by {metric} ===")
+    print(df_result)
 
