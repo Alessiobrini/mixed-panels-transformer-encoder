@@ -71,10 +71,10 @@ data:
 training:
   seed:           125 #42
   batch_size:     16
-  epochs:         300
+  epochs:         2 #300
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'Test_13_freq_emb4'       # optional, or your custom name
+  experiment_name: 'Test1'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
 validation:
@@ -90,6 +90,9 @@ model:
     dropout: 0.1
     d_freq: null       # default: computed via log2
     d_var: null        # default: computed via log2
+    dim_feedforward: 128
+    activation: "relu"
+
   ar:
     max_lag: 40
   midas:
@@ -116,7 +119,7 @@ evaluation:
 
 hyperopt:
   study_name: null  # optional name for the Optuna study
-  n_trials: 60
+  n_trials: 2
   d_model: [16, 32, 64, 128, 256, 512]
   nhead: [2, 4, 6, 8]
   num_layers: [1, 2, 3, 4]
@@ -124,6 +127,9 @@ hyperopt:
   lr: [1e-5, 1e-4, 1e-3, 5e-4]
   d_freq: [2, 4, 8, 16, 32, 128]
   d_var: [4, 8, 16, 32, 64, 128]
+  dim_feedforward: [128, 256, 512, 1024]
+  activation: ["relu", "gelu"]
+
 
 
 # ← make sure there’s a blank line at the end
