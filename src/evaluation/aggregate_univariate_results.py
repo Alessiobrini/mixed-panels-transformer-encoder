@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
@@ -63,7 +64,7 @@ for target in TARGETS:
             df = pd.read_csv(pred_file, parse_dates=['date'])
             # Compute metrics
             full = compute_errors(df)
-            early = compute_errors(df, period_end=pd.Timestamp("2019-12-31"))
+            early = compute_errors(df, period_end=pd.Timestamp("2019-06-30"))
 
             for period, metrics in zip(["full", "pre_2020"], [full, early]):
                 prediction_metrics.append({
@@ -109,3 +110,37 @@ for metric, data in win_counts.items():
     print(f"\n=== Best model counts by {metric} ===")
     print(df_result)
 
+
+
+PLOT_PRE_COVID_ONLY = True  # Set to False to plot full range
+
+print("\n=== Plotting predictions per target ===")
+
+for target in TARGETS:
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    # Locate any prediction folder
+    folder = next(EXPERIMENT_DIR.glob(f"{target}_*"))
+    true_df = None
+
+    for model, filename_start in PRED_FILES.items():
+        pred_file = next(folder.glob(f"{filename_start}_*.csv"), None)
+        if pred_file is None:
+            continue
+
+        df = pd.read_csv(pred_file, parse_dates=['date'])
+
+        # Filter if needed
+        if PLOT_PRE_COVID_ONLY:
+            df = df[df['date'] <= pd.Timestamp("2019-06-30")]
+
+        if true_df is None:
+            true_df = df.iloc[:, :2]  # date and true value
+            ax.plot(true_df['date'], true_df.iloc[:, 1], 'k--', label='True')
+
+        ax.plot(df['date'], df.iloc[:, 2], label=model.capitalize())
+
+    ax.set_title(f"{target} — Model Predictions{' (pre-COVID)' if PLOT_PRE_COVID_ONLY else ''}")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
