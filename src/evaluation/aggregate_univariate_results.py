@@ -89,9 +89,11 @@ for target in TARGETS:
         df = pd.read_csv(pred_file, parse_dates=['date'])
         # Compute metrics      
         full = compute_errors(df)
-        early = compute_errors(df, period_end=pd.Timestamp("2019-06-30"))
+        pre_2020 = compute_errors(df, period_end=pd.Timestamp("2019-06-30"))
+        post_2020 = compute_errors(df[df["date"] > pd.Timestamp("2019-06-30")])
+        
+        for period, metrics in zip(["full", "pre_2020", "post_2020"], [full, pre_2020, post_2020]):
 
-        for period, metrics in zip(["full", "pre_2020"], [full, early]):
             prediction_metrics.append({
                 "target": target,
                 "date": suffix,
