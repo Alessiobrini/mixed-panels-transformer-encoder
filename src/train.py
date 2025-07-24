@@ -153,6 +153,7 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
 
     mask = full_dataset.df['Variable'] == full_dataset.target_variable
     timestamps = full_dataset.df[mask]['Timestamp'].reset_index(drop=True)
+    test_indices = [int(i) for i in np.array(test_indices)+full_dataset.skipped_context- 1]
     test_dates = timestamps.iloc[test_indices].reset_index(drop=True)
 
     df_out = pd.DataFrame({

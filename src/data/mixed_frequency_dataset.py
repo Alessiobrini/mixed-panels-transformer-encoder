@@ -62,7 +62,11 @@ class MixedFrequencyDataset(Dataset):
         self.scaler = self.scalers[self.target_variable]
  
         # Build list of sequence/target pairs
+        self.skipped_context = 0
         self.sequence_windows = self._build_sequence_targets()
+        
+        
+        
 
     def inverse_transform(self, var_name: str, values: np.ndarray) -> np.ndarray:
         return self.scalers[var_name].inverse_transform(values.reshape(-1, 1)).flatten()
@@ -87,25 +91,31 @@ class MixedFrequencyDataset(Dataset):
 
         for _, row in target_rows.iterrows():
             target_time_id = row["time_id"]
-            context_start = target_time_id - self.context_days
-            # context_end = target_time_id  # exclusive
             context_end = self.df[
                                 (self.df[self.variable_column] == self.target_variable) &
                                 (self.df["time_id"] < target_time_id)
                             ]["time_id"].max()
-
+            
+            if pd.notna(context_end):
+                context_end = int(context_end)
+            else:
+                self.skipped_context += 1
+                continue
+            context_start = context_end - self.context_days
+            # context_end = target_time_id  # exclusive
  
             if context_start < 0:
+                self.skipped_context += 1
                 continue  # Not enough history to build context
     
             # Extract context window
             context_df = self.df[
-                (self.df["time_id"] >= context_end - self.context_days) & 
+                (self.df["time_id"] >= context_start) & 
                 (self.df["time_id"] <= context_end)
             ]
 
-    
             if context_df.empty:
+                self.skipped_context += 1
                 continue  # Skip if context has no data
  
             result.append({
@@ -113,6 +123,7 @@ class MixedFrequencyDataset(Dataset):
                 "target_value": float(row["scaled_value"])
 
             })
+  
     
         return result
     
