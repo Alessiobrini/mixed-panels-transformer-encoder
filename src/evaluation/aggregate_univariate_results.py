@@ -3,10 +3,28 @@ import numpy as np
 from pathlib import Path
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
+import yaml
+
+
+def get_best_targets(df_metrics, model_name, period, metric):
+    df_flat = df_metrics.reset_index()
+
+    # Filter by period and exclude the 'ar' model
+    df_period = df_flat[(df_flat["period"] == period) & (df_flat["model"] != "ar")]
+
+    # Find best model per target (among non-AR models)
+    best_models = (
+        df_period.groupby("target")
+        .apply(lambda g: g.loc[g[metric].idxmin(), "model"], include_groups=False)
+    )
+
+    # Return targets where the selected model is best
+    return best_models[best_models == model_name].index.tolist()
+
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-07-16"  # <-- Set this to the date you want to analyze
+EXPERIMENT_DATE = "2025-07-18"  # <-- Set this to the date you want to analyze
 PLOT_PRE_COVID_ONLY = False      # Set to False to plot full range
 
 TARGETS = [
@@ -69,7 +87,7 @@ for target in TARGETS:
             continue
 
         df = pd.read_csv(pred_file, parse_dates=['date'])
-        # Compute metrics
+        # Compute metrics      
         full = compute_errors(df)
         early = compute_errors(df, period_end=pd.Timestamp("2019-06-30"))
 
@@ -116,7 +134,6 @@ for metric, data in win_counts.items():
 
 # --- Plotting predictions per target ---
 print("\n=== Plotting predictions per target ===")
-
 for target in TARGETS:
     folder = EXPERIMENT_DIR / f"{target}_{EXPERIMENT_DATE}"
     if not folder.exists():
@@ -147,3 +164,25 @@ for target in TARGETS:
     ax.grid(False)
     plt.tight_layout()
     plt.show()
+
+# best_rmse_targets = get_best_targets(df_metrics, model_name="transformer", period="full", metric="RMSE")
+# print("Transformer is best (lowest RMSE) for these targets in 'full':", best_rmse_targets)
+
+
+
+records = []
+
+for target in TARGETS:
+    folder = EXPERIMENT_DIR / f"{target}_{EXPERIMENT_DATE}"
+    param_file = folder / "best_params.yaml"
+    if not param_file.exists():
+        print(f"Missing best_params.yaml for {target}, skipping.")
+        continue
+
+    with open(param_file, "r") as f:
+        params = yaml.safe_load(f)
+        params["target"] = target
+        records.append(params)
+
+# Convert to DataFrame
+df_params = pd.DataFrame(records).set_index("target")
