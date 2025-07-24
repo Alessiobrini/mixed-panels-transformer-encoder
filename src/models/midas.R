@@ -33,6 +33,7 @@ if (isTRUE(config$features$all_monthly)) {
 } else {
   monthly_vars   <- config$features$monthly_vars
   quarterly_vars <- config$features$quarterly_vars
+  target_var     <- config$features$target
   n_monthly      <- length(monthly_vars)
   n_quarterly    <- length(quarterly_vars)
 }
@@ -60,11 +61,16 @@ monthly <- df %>%
 # Only keep available variables after pivoting
 available_vars <- intersect(monthly_vars, names(monthly))
 
+# Prepare full quarterly df
 quarterly <- df %>%
   filter(Variable %in% quarterly_vars) %>%
   mutate(Timestamp = as.Date(as.yearqtr(Timestamp))) %>%
-  distinct(Timestamp, .keep_all = TRUE) %>%
-  arrange(Timestamp)
+  arrange(Variable, Timestamp)
+
+# Then isolate the actual target variable series
+target_var <- config$features$target
+target_df <- quarterly %>% filter(Variable == target_var)
+
 
 # 2) Build monthly ts list dynamically
 monthly_ts_list <- list()
@@ -78,9 +84,10 @@ for (var in available_vars) {
 }
 
 # 3) Build quarterly target ts
+
 ind_ts <- ts(
-  quarterly$Value,
-  start = c(year(min(quarterly$Timestamp)), quarter(min(quarterly$Timestamp))),
+  target_df$Value,
+  start = c(year(min(target_df$Timestamp)), quarter(min(target_df$Timestamp))),
   frequency = 4
 )
 
