@@ -139,11 +139,23 @@ df_flat = df_metrics.reset_index()
 df_flat = df_flat[df_flat['model'] != 'ar']
 
 for metric in metric_names:
+    # choose idxmin or idxmax depending on the metric
+    if metric == "DA":
+        best_idx = lambda g: g[metric].idxmax()
+    else:
+        best_idx = lambda g: g[metric].idxmin()
+
     best_models = (
-        df_flat.groupby(['target', 'date', 'period'])
-        .apply(lambda g: g.loc[g[metric].idxmin(), 'model'], include_groups=False)
+        df_flat
+        .groupby(['target', 'date', 'period'])
+        .apply(lambda g: g.loc[best_idx(g), 'model'], 
+               include_groups=False)
     )
-    counts = best_models.groupby([best_models.index.get_level_values('period'), best_models]).size()
+
+    counts = best_models.groupby(
+        [best_models.index.get_level_values('period'), best_models]
+    ).size()
+
     print(f"\n=== Best model counts by {metric} ===")
     print(counts.unstack().fillna(0).astype(int))
 
