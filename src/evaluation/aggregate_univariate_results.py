@@ -5,27 +5,10 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
 import yaml
 
-
-def get_best_targets(df_metrics, model_name, period, metric):
-    df_flat = df_metrics.reset_index()
-
-    # Filter by period and exclude the 'ar' model
-    df_period = df_flat[(df_flat["period"] == period) & (df_flat["model"] != "ar")]
-
-    # Find best model per target (among non-AR models)
-    best_models = (
-        df_period.groupby("target")
-        .apply(lambda g: g.loc[g[metric].idxmin(), "model"], include_groups=False)
-    )
-
-    # Return targets where the selected model is best
-    return best_models[best_models == model_name].index.tolist()
-
-
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-07-18"  # <-- Set this to the date you want to analyze
-PLOT_PRE_COVID_ONLY = False      # Set to False to plot full range
+EXPERIMENT_DATE = "2025-07-24"
+PLOT_PRE_COVID_ONLY = True
 
 TARGETS = [
     "GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE",
@@ -43,31 +26,37 @@ def mape(y_true, y_pred):
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
 
-def compute_errors(df, period_end=None):
-    if period_end:
-        df = df[df['date'] <= period_end]
-    y_true = df.iloc[:, 1].values
-    y_pred = df.iloc[:, 2].values
+def directional_accuracy(y_true, y_pred):
+    # compute the sign of the change from t–1 to t
+    true_dir = np.sign(np.diff(y_true))
+    pred_dir = np.sign(np.diff(y_pred))
+    # hit rate: fraction of times the directions match
+    return np.mean(true_dir == pred_dir)
+
+
+def compute_errors(y_true, y_pred):
     return {
         "RMSE": np.sqrt(mean_squared_error(y_true, y_pred)),
         "MAE": mean_absolute_error(y_true, y_pred),
-        "MAPE": mape(y_true, y_pred)
+        "MAPE": mape(y_true, y_pred),
+        "DA": directional_accuracy(y_true, y_pred)
     }
 
 # --- Storage ---
 dm_results = []
 prediction_metrics = []
+plot_data = {}  # store merged DataFrames for plotting later
 
 # --- Walk through each target ---
 for target in TARGETS:
     folder = EXPERIMENT_DIR / f"{target}_{EXPERIMENT_DATE}"
     if not folder.exists():
-        print(f"Skipping {target}: folder for date {EXPERIMENT_DATE} not found.")
+        print(f"Skipping {target}: folder not found.")
         continue
 
     suffix = EXPERIMENT_DATE
 
-    # DM test parsing
+    # Load DM results if available
     dm_path = folder / DM_FILENAME
     if dm_path.exists():
         df_dm = pd.read_csv(dm_path, sep=None, engine="python")
@@ -80,20 +69,57 @@ for target in TARGETS:
                 "p_value": row.iloc[2]
             })
 
-    # Prediction error metrics
-    for model, filename_start in PRED_FILES.items():
-        pred_file = next(folder.glob(f"{filename_start}_*.csv"), None)
-        if pred_file is None:
+    # Load predictions and track true values for consistency check
+    raw_dfs = []
+    pred_dfs = []
+    for model, prefix in PRED_FILES.items():
+        file = next(folder.glob(f"{prefix}_*.csv"), None)
+        if file is None:
             continue
+        df = pd.read_csv(file, parse_dates=['date'])
+        df = df.rename(columns={df.columns[1]: "true", df.columns[2]: model})
+        df["target"] = target
+        raw_dfs.append(df[['date', 'true']].copy())
+        pred_dfs.append(df.set_index(['date', 'target']))
 
-        df = pd.read_csv(pred_file, parse_dates=['date'])
-        # Compute metrics      
-        full = compute_errors(df)
-        pre_2020 = compute_errors(df, period_end=pd.Timestamp("2019-06-30"))
-        post_2020 = compute_errors(df[df["date"] > pd.Timestamp("2019-06-30")])
-        
-        for period, metrics in zip(["full", "pre_2020", "post_2020"], [full, pre_2020, post_2020]):
+    if not pred_dfs:
+        continue
 
+    # --- Target consistency check ---
+    # Build a DataFrame of true values from each model, rounded for stability
+    true_series = []
+    for idx, df_raw in enumerate(raw_dfs):
+        series = df_raw.set_index('date')['true'].round(6)
+        true_series.append(series.rename(f"true_{idx}"))
+    df_true_compare = pd.concat(true_series, axis=1, join='inner')
+    unequal = df_true_compare.nunique(axis=1) != 1
+    if unequal.any():
+        print(f"Inconsistent target values for {target} on dates:")
+        print(df_true_compare[unequal].head())
+        raise ValueError(f"Target mismatch detected for {target}.")
+
+    # --- Merge and drop missing rows ---
+    merged = pred_dfs[0].copy()
+    for df in pred_dfs[1:]:
+        merged = merged.join(df.drop(columns='true'), how='inner')
+    merged.reset_index(inplace=True)
+
+    # Store for plotting
+    plot_data[target] = merged.copy()
+
+    # --- Compute metrics for full, pre-COVID, post-COVID ---
+    for period, mask in {
+        "full": slice(None),
+        "pre_2020": merged['date'] <= pd.Timestamp("2019-06-30"),
+        "post_2020": merged['date'] > pd.Timestamp("2019-06-30")
+    }.items():
+        subset = merged.loc[mask]
+        y_true = subset['true'].values
+        for model in PRED_FILES:
+            if model not in subset.columns:
+                continue
+            y_pred = subset[model].values
+            metrics = compute_errors(y_true, y_pred)
             prediction_metrics.append({
                 "target": target,
                 "date": suffix,
@@ -103,88 +129,36 @@ for target in TARGETS:
             })
 
 # --- Build DataFrames ---
-df_dm = pd.DataFrame(dm_results)
-df_dm.set_index(["target", "date", "comparison"], inplace=True)
+df_dm = pd.DataFrame(dm_results).set_index(['target', 'date', 'comparison'])
+df_metrics = pd.DataFrame(prediction_metrics).set_index(['target', 'date', 'model', 'period'])
 
-df_metrics = pd.DataFrame(prediction_metrics)
-df_metrics.set_index(["target", "date", "model", "period"], inplace=True)
-
-# --- Analyze model performance: count how often each model is best ---
-print("\n=== Model performance summary: number of times each model is best per metric and period ===")
-
+# --- Print performance summary ---
+print("\n=== Model performance summary ===")
+metric_names = ["RMSE", "MAE", "MAPE", "DA"]
 df_flat = df_metrics.reset_index()
-df_flat = df_flat[df_flat["model"] != "ar"]
-metric_names = ["RMSE", "MAE", "MAPE"]
-win_counts = {metric: {} for metric in metric_names}
+df_flat = df_flat[df_flat['model'] != 'ar']
 
 for metric in metric_names:
-    grouped = df_flat.groupby(["target", "date", "period"])
-    best_models = grouped.apply(lambda g: g.loc[g[metric].idxmin(), "model"], include_groups=False)
-    counts = best_models.groupby([best_models.index.get_level_values("period"), best_models]).size()
-
-    for (period, model), count in counts.items():
-        if model not in win_counts[metric]:
-            win_counts[metric][model] = {}
-        win_counts[metric][model][period] = count
-
-# --- Print formatted results ---
-for metric, data in win_counts.items():
-    df_result = pd.DataFrame(data).fillna(0).astype(int).T
-    df_result.columns.name = "Period"
+    best_models = (
+        df_flat.groupby(['target', 'date', 'period'])
+        .apply(lambda g: g.loc[g[metric].idxmin(), 'model'], include_groups=False)
+    )
+    counts = best_models.groupby([best_models.index.get_level_values('period'), best_models]).size()
     print(f"\n=== Best model counts by {metric} ===")
-    print(df_result)
+    print(counts.unstack().fillna(0).astype(int))
 
-# --- Plotting predictions per target ---
+# --- Plot using merged data ---
 print("\n=== Plotting predictions per target ===")
-for target in TARGETS:
-    folder = EXPERIMENT_DIR / f"{target}_{EXPERIMENT_DATE}"
-    if not folder.exists():
-        print(f"Skipping plot for {target}: folder for date {EXPERIMENT_DATE} not found.")
-        continue
-
+for target, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
-    true_df = None
-
-    for model, filename_start in PRED_FILES.items():
-        pred_file = next(folder.glob(f"{filename_start}_*.csv"), None)
-        if pred_file is None:
-            continue
-
-        df = pd.read_csv(pred_file, parse_dates=['date'])
-
-        if PLOT_PRE_COVID_ONLY:
-            df = df[df['date'] <= pd.Timestamp("2019-06-30")]
-
-        if true_df is None:
-            true_df = df.iloc[:, :2]
-            ax.plot(true_df['date'], true_df.iloc[:, 1], 'k--', label='True')
-
-        ax.plot(df['date'], df.iloc[:, 2], label=model.capitalize())
-
-    ax.set_title(f"{target} — Model Predictions{' (pre-COVID)' if PLOT_PRE_COVID_ONLY else ''}")
+    df_plot = merged.copy()
+    if PLOT_PRE_COVID_ONLY:
+        df_plot = df_plot[df_plot['date'] <= pd.Timestamp("2019-06-30")]
+    ax.plot(df_plot['date'], df_plot['true'], 'k--', label='True')
+    for model in PRED_FILES:
+        if model in df_plot.columns:
+            ax.plot(df_plot['date'], df_plot[model], label=model.capitalize())
+    ax.set_title(f"{target} Predictions")
     ax.legend()
-    ax.grid(False)
     plt.tight_layout()
     plt.show()
-
-# best_rmse_targets = get_best_targets(df_metrics, model_name="transformer", period="full", metric="RMSE")
-# print("Transformer is best (lowest RMSE) for these targets in 'full':", best_rmse_targets)
-
-
-
-records = []
-
-for target in TARGETS:
-    folder = EXPERIMENT_DIR / f"{target}_{EXPERIMENT_DATE}"
-    param_file = folder / "best_params.yaml"
-    if not param_file.exists():
-        print(f"Missing best_params.yaml for {target}, skipping.")
-        continue
-
-    with open(param_file, "r") as f:
-        params = yaml.safe_load(f)
-        params["target"] = target
-        records.append(params)
-
-# Convert to DataFrame
-df_params = pd.DataFrame(records).set_index("target")
