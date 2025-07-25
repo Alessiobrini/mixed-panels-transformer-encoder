@@ -17,7 +17,11 @@ TARGETS = [
 PRED_FILES = {
     "transformer": "transformer_preds",
     "ar": "ar_preds",
-    "midas": "midas_preds"
+    "midas": "midas_preds",
+    "ols": "ols_preds",
+    "xgb": "xgb_preds",
+    "nn": "nn_preds",
+    
 }
 DM_FILENAME = "dm_test_results.csv"
 
@@ -160,6 +164,7 @@ for metric in metric_names:
     print(counts.unstack().fillna(0).astype(int))
 
 # --- Plot using merged data ---
+PLOT_MODELS = ['transformer', 'midas']
 print("\n=== Plotting predictions per target ===")
 for target, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -167,7 +172,7 @@ for target, merged in plot_data.items():
     if PLOT_PRE_COVID_ONLY:
         df_plot = df_plot[df_plot['date'] <= pd.Timestamp("2019-06-30")]
     ax.plot(df_plot['date'], df_plot['true'], 'k--', label='True')
-    for model in PRED_FILES:
+    for model in PLOT_MODELS:
         if model in df_plot.columns:
             ax.plot(df_plot['date'], df_plot[model], label=model.capitalize())
     ax.set_title(f"{target} Predictions")
