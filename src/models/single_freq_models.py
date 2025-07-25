@@ -21,7 +21,7 @@ EXPERIMENT_DATE = "2025-07-24"
 N_LAGS = 4
 BATCH_SIZE = 16
 EPOCHS = 100
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 
 # --- Paths ---
 # Use project_root to resolve relative paths from config
@@ -60,7 +60,7 @@ md_q = md_q.drop(columns=list(overlap))
 data = pd.merge(qd, md_q, on="date", how="inner").set_index("date")
 
 # --- Loop through each target ---
-for target in quarterly_vars[:1]:
+for target in quarterly_vars:
     print(f"\n--- Processing target: {target} ---")
     target_dir = experiment_dir / f"{target}_{EXPERIMENT_DATE}"
     target_dir.mkdir(parents=True, exist_ok=True)
