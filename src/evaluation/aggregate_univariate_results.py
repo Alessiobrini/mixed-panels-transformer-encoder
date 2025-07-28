@@ -7,7 +7,7 @@ import yaml
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-07-24"
+EXPERIMENT_DATE = "2025-07-25"
 PLOT_PRE_COVID_ONLY = True
 
 TARGETS = [
@@ -45,6 +45,24 @@ def compute_errors(y_true, y_pred):
         "MAPE": mape(y_true, y_pred),
         "DA": directional_accuracy(y_true, y_pred)
     }
+
+
+def get_best_targets(df_metrics, model_name, period, metric):
+    df_flat = df_metrics.reset_index()
+
+    # Filter by period and exclude the 'ar' model
+    df_period = df_flat[(df_flat["period"] == period) & (df_flat["model"] != "ar")]
+
+    # Find best model per target (among non-AR models)
+    best_models = (
+        df_period.groupby("target")
+        .apply(lambda g: g.loc[g[metric].idxmin(), "model"], include_groups=False)
+    )
+
+    # Return targets where the selected model is best
+    return best_models[best_models == model_name].index.tolist()
+
+
 
 # --- Storage ---
 dm_results = []
@@ -164,7 +182,7 @@ for metric in metric_names:
     print(counts.unstack().fillna(0).astype(int))
 
 # --- Plot using merged data ---
-PLOT_MODELS = ['transformer', 'midas']
+PLOT_MODELS = ['transformer', 'midas', 'xgb']
 print("\n=== Plotting predictions per target ===")
 for target, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
