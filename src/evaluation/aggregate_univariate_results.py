@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from arch.bootstrap import MCS
+
 import matplotlib.pyplot as plt
 import yaml
 
@@ -62,6 +64,23 @@ def get_best_targets(df_metrics, model_name, period, metric):
     # Return targets where the selected model is best
     return best_models[best_models == model_name].index.tolist()
 
+
+# --- MCS helper ---
+def run_mcs(y_true, preds_dict, size=0.10, reps=5000, block_size=None, method="R", bootstrap="stationary", seed=None):
+    """
+    Compute the Model Confidence Set using arch.bootstrap.MCS.
+    """
+    model_names = list(preds_dict.keys())
+    # build loss matrix as squared errors (T×k)
+    losses = np.column_stack([(y_true - preds_dict[m])**2 for m in model_names])
+
+    # instantiate and run MCS with no 'loss' argument
+    mcs = MCS(losses, size=size, reps=reps, block_size=block_size, method=method, bootstrap=bootstrap, seed=seed)
+    mcs.compute()
+
+    included = [model_names[i] for i in mcs.included]
+    pvalues = mcs.pvalues  # DataFrame indexed by model index or name
+    return included, pvalues
 
 
 # --- Storage ---
@@ -197,3 +216,83 @@ for target, merged in plot_data.items():
     ax.legend()
     plt.tight_layout()
     plt.show()
+
+# --- MCS ---
+print("\n=== Model Confidence Set (MCS) Results ===")
+mcs_results = []
+
+for target, merged in plot_data.items():
+    for period, mask in {
+        "full": slice(None),
+        "pre_2020": merged['date'] <= pd.Timestamp("2019-06-30"),
+        "post_2020": merged['date'] > pd.Timestamp("2019-06-30")
+    }.items():
+        df_sub = merged.loc[mask]
+        y_true = df_sub['true'].values
+
+        # Collect predictions (skip AR if needed)
+        preds = {
+            model: df_sub[model].values
+            for model in PRED_FILES
+            if model in df_sub.columns and model != "ar"
+        }
+
+        if len(preds) < 2:
+            continue  # MCS needs at least 2 models
+
+        try:
+            included_models, pvals = run_mcs(y_true, preds, size=0.10, reps=1000, seed=42)
+            mcs_results.append({
+                "target": target,
+                "period": period,
+                "included_models": included_models,
+                "pvalues": pvals
+            })
+        except Exception as e:
+            print(f"Skipping MCS for {target} ({period}) due to error: {e}")
+
+print("\n=== MCS Summary by Target (Full Period Only) ===")
+for row in mcs_results:
+    if row['period'] != "full":
+        continue  # skip pre/post 2020
+
+    print(f"{row['target']} ({row['period']}): included = {', '.join(row['included_models'])}")
+    print("p-values:")
+    print(row["pvalues"])
+    print()
+
+# --- MCS model frequency summary (full period only) ---
+from collections import Counter, defaultdict
+
+# --- Track frequency and p-values per model ---
+model_counter = Counter()
+model_pvalues = defaultdict(list)
+
+for row in mcs_results:
+    if row["period"] != "full":
+        continue
+    included = row["included_models"]
+    pvals = row["pvalues"]
+
+    for model in included:
+        model_counter[model] += 1
+        # Get index of this model in pval DataFrame
+        for idx, name in enumerate(pvals.index):
+            if model_counter.keys() == pvals.index.tolist():
+                model_pvalues[model].append(pvals.loc[name, "Pvalue"])
+                break
+        else:
+            # fallback: match model by name if available
+            model_pvalues[model].append(pvals["Pvalue"].mean())
+
+# --- Print table ---
+num_targets = sum(1 for row in mcs_results if row["period"] == "full")
+
+print("\n=== MCS Inclusion Frequency and Avg p-value (Full Period) ===")
+print(f"Total targets evaluated: {num_targets}\n")
+
+for model in sorted(model_counter):
+    count = model_counter[model]
+    freq = count / num_targets
+    avg_p = np.mean(model_pvalues[model])
+    print(f"{model:<12} included in {count:2d} / {num_targets} targets ({freq:.1%}), avg p-value = {avg_p:.3f}")
