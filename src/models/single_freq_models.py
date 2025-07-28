@@ -5,10 +5,18 @@ from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBRegressor
+from sklearn.model_selection import ParameterGrid
+from sklearn.metrics import mean_squared_error
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 import yaml, pdb
+import random
+
+SEED = 42
+np.random.seed(SEED)
+random.seed(SEED)
+torch.manual_seed(SEED)
 
 # --- Load config ---
 project_root = Path(__file__).resolve().parents[2]
@@ -22,6 +30,10 @@ N_LAGS = 4
 BATCH_SIZE = 16
 EPOCHS = 100
 LEARNING_RATE = 1e-4
+# Hyperparameter‐search flag
+OPTIMIZE   = True    # set to True to turn on train/val split + grid‐search
+VAL_RATIO  = 0.1      # % of train to hold out for validation when OPTIMIZE=True
+
 
 # --- Paths ---
 # Use project_root to resolve relative paths from config
@@ -105,7 +117,13 @@ for target in quarterly_vars:
     n_total = len(df_model)
     n_train = int(n_total * train_ratio)
     df_train = df_model.iloc[:n_train]
-    df_test = df_model.iloc[n_train:]
+    df_test  = df_model.iloc[n_train:]
+    
+    if OPTIMIZE:
+        # carve last VAL_RATIO of train as a validation fold
+        n_val    = int(len(df_train) * VAL_RATIO)
+        df_val   = df_train.iloc[-n_val:]
+        df_train = df_train.iloc[:-n_val]
 
     # Prepare arrays
     feature_cols = df_train.columns.drop(target)
@@ -117,11 +135,19 @@ for target in quarterly_vars:
     y_test  = df_test[target].values
     test_dates = df_test.index
 
+    if OPTIMIZE:
+        # ← define validation inputs
+        X_val = df_val[feature_cols].values
+        y_val = df_val[target].values
+
     # Standardize predictors
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
+    if OPTIMIZE:
+        # ← now you can scale the val set too
+        X_val_scaled = scaler.transform(X_val)
     # 1. OLS
     ols = LinearRegression()
     ols.fit(X_train_scaled, y_train)
@@ -130,49 +156,107 @@ for target in quarterly_vars:
       .to_csv(target_dir / f"ols_preds_{suffix}.csv", index=False)
 
     # 2. XGBoost
-    xgb = XGBRegressor(n_estimators=100, max_depth=3, learning_rate=0.1)
-    xgb.fit(X_train, y_train)
-    xgb_preds = xgb.predict(X_test)
+    if OPTIMIZE:
+        # small hyper‐param grid
+        xgb_grid = {
+            'n_estimators': [50, 100, 150],
+            'max_depth':    [3,   5,   7],
+            'learning_rate':[0.05,0.1,0.2]
+        }
+        best_rmse, best_params = float('inf'), None
+        for params in ParameterGrid(xgb_grid):
+            tmp = XGBRegressor(**params)
+            tmp.fit(X_train, y_train)
+            rmse = np.sqrt(mean_squared_error(y_val, tmp.predict(X_val)))
+            if rmse < best_rmse:
+                best_rmse, best_params = rmse, params
+    
+        # retrain on train + val
+        xgb_final = XGBRegressor(**best_params)
+        xgb_final.fit(
+            np.vstack([X_train, X_val]),
+            np.concatenate([y_train, y_val])
+        )
+        xgb_preds = xgb_final.predict(X_test)
+    else:
+        xgb = XGBRegressor(n_estimators=100, max_depth=3, learning_rate=0.1, random_state=SEED)
+        xgb.fit(X_train, y_train)
+        xgb_preds = xgb.predict(X_test)
+
     pd.DataFrame({"date": test_dates, "target": y_test, "predicted": xgb_preds})\
       .to_csv(target_dir / f"xgb_preds_{suffix}.csv", index=False)
 
     # 3. Feedforward NN (PyTorch)
     class SimpleNN(nn.Module):
-        def __init__(self, input_dim):
+        def __init__(self, input_dim, h1=64, h2=32):
             super().__init__()
             self.net = nn.Sequential(
-                nn.Linear(input_dim, 64),
+                nn.Linear(input_dim, h1),
                 nn.ReLU(),
-                nn.Linear(64, 32),
+                nn.Linear(h1, h2),
                 nn.ReLU(),
-                nn.Linear(32, 1)
+                nn.Linear(h2, 1)
             )
         def forward(self, x):
             return self.net(x)
-
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = SimpleNN(X_train_scaled.shape[1]).to(device)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-    train_ds = TensorDataset(torch.tensor(X_train_scaled, dtype=torch.float32),
-                             torch.tensor(y_train, dtype=torch.float32).unsqueeze(1))
-    train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-
-    model.train()
-    for epoch in range(EPOCHS):
-        for xb, yb in train_dl:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            loss = criterion(model(xb), yb)
-            loss.backward()
-            optimizer.step()
-
-    model.eval()
+    input_dim = X_train_scaled.shape[1]
+    
+    # Prepare common tensors
+    X_train_scaled_t = torch.tensor(X_train_scaled, dtype=torch.float32).to(device)
+    y_train_t        = torch.tensor(y_train,       dtype=torch.float32).unsqueeze(1).to(device)
+    X_test_scaled_t  = torch.tensor(X_test_scaled, dtype=torch.float32).to(device)
+    
+    # PyTorch MSE loss
+    crit = nn.MSELoss()
+    
+    if OPTIMIZE:
+        # Define search grid
+        nn_grid = [
+            {"h1": 64,  "h2": 32,  "lr": 1e-3},
+            {"h1": 128, "h2": 64,  "lr": 1e-4},
+        ]
+    
+        # Validation tensors
+        X_val_scaled_t = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        y_val_t        = torch.tensor(y_val,         dtype=torch.float32).unsqueeze(1).to(device)
+    
+        best_loss, best_model = float("inf"), None
+        for cfg in nn_grid:
+            net = SimpleNN(input_dim, cfg["h1"], cfg["h2"]).to(device)
+            opt = torch.optim.Adam(net.parameters(), lr=cfg["lr"])
+    
+            for _ in range(EPOCHS):
+                net.train()
+                loss = crit(net(X_train_scaled_t), y_train_t)
+                opt.zero_grad(); loss.backward(); opt.step()
+    
+            net.eval()
+            with torch.no_grad():
+                val_loss = crit(net(X_val_scaled_t), y_val_t).item()
+    
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_model = net
+    
+        final_model = best_model
+    
+    else:
+        final_model = SimpleNN(input_dim).to(device)
+        opt = torch.optim.Adam(final_model.parameters(), lr=LEARNING_RATE)
+        for _ in range(EPOCHS):
+            final_model.train()
+            loss = crit(final_model(X_train_scaled_t), y_train_t)
+            opt.zero_grad(); loss.backward(); opt.step()
+    
+    # Final prediction
+    final_model.eval()
     with torch.no_grad():
-        nn_preds = model(torch.tensor(X_test_scaled, dtype=torch.float32).to(device))\
-            .cpu().numpy().flatten()
+        nn_preds = final_model(X_test_scaled_t).cpu().numpy().flatten()
+    
     pd.DataFrame({"date": test_dates, "target": y_test, "predicted": nn_preds})\
       .to_csv(target_dir / f"nn_preds_{suffix}.csv", index=False)
+
 
 print("\n All models finished and predictions saved.")
