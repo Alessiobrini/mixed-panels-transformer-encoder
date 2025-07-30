@@ -117,7 +117,17 @@ if __name__ == "__main__":
     PRED_COL = config.evaluation.pred_col
 
     # Load and merge predictions
-    dfs = [load_forecasts(path, TRUE_COL, PRED_COL) for path in FORECAST_PATHS]
+    dfs = []
+    for path in FORECAST_PATHS:
+        df = load_forecasts(path, TRUE_COL, PRED_COL)
+        
+        # Trim the first row if the model is AR or MIDAS
+        filename = path.stem.lower()
+        if "ar" in filename or "midas" in filename:
+            df = df.iloc[1:]
+        
+        dfs.append(df)
+
     merged = dfs[0]
     for df in dfs[1:]:
         merged = merged.join(df.drop(columns=TRUE_COL), how="inner")

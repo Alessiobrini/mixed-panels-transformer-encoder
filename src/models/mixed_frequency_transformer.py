@@ -25,7 +25,9 @@ class MixedFrequencyTransformer(nn.Module):
         nhead: int = 4,
         num_layers: int = 4,
         dropout: float = 0.1,
-        max_len: int = 512
+        max_len: int = 512,
+        dim_feedforward: int = 2048,
+        activation: str = "relu"
     ):
         super().__init__()
         self.d_input = 1 + d_freq + d_var
@@ -43,7 +45,15 @@ class MixedFrequencyTransformer(nn.Module):
         self.register_buffer("positional_encoding", pe)
 
         # Transformer encoder
-        encoder_layer = TransformerEncoderLayer(d_model=d_model, nhead=nhead, dropout=dropout, batch_first=True)
+        encoder_layer = TransformerEncoderLayer(
+                                                d_model=d_model,
+                                                nhead=nhead,
+                                                dim_feedforward=dim_feedforward,
+                                                dropout=dropout,
+                                                activation=activation,
+                                                batch_first=True
+                                            )
+
         self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         # Prediction head

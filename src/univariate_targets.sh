@@ -14,17 +14,18 @@ set -o pipefail
 
 source ~/.bashrc
 conda activate tsa-dev
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 # Set project root and move there
-PROJECT_ROOT=$(dirname "$(readlink -f "$0")")/..
+PROJECT_ROOT="/hpc/group/darec/ab978/tsa-dev" 
 cd "$PROJECT_ROOT"
 
 # Today's date in YYYY-MM-DD format
 TODAY=$(date +%F)
 
-targets=("GDPC1" "GPDIC1" "PCECC96" "DPIC96")
-CONFIG_PATH="src/config/cfg.yaml"
-PYTHON_RUNNER="src/run_pipeline.py"
+targets=("GDPC1" "GPDIC1" "PCECC96" "DPIC96" "OUTNFB" "UNRATE" "PCECTPI" "PCEPILFE" "CPIAUCSL" "CPILFESL" "FPIx" "EXPGSC1" "IMPGSC1")
+CONFIG_PATH="$PROJECT_ROOT/src/config/cfg.yaml"
+PYTHON_RUNNER="$PROJECT_ROOT/src/run_pipeline.py"
 
 for target in "${targets[@]}"
 do

@@ -96,7 +96,7 @@ def prepare_data(csv_path, config):
 
 
 
-def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None, d_freq=None, d_var=None):
+def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None, d_freq=None, d_var=None, dim_feedforward=2048, activation="relu"):
     if train_loader is None:
         train_loader = DataLoader(
             torch.utils.data.Subset(full_dataset, list(range(int(config.data.train_ratio * len(full_dataset))))),
@@ -123,7 +123,9 @@ def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train
         d_model=d_model,
         nhead=nhead,
         num_layers=num_layers,
-        dropout=dropout
+        dropout=dropout,
+        dim_feedforward=dim_feedforward,
+        activation=activation
     )
 
 
@@ -151,7 +153,8 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
 
     mask = full_dataset.df['Variable'] == full_dataset.target_variable
     timestamps = full_dataset.df[mask]['Timestamp'].reset_index(drop=True)
-    test_dates = timestamps.iloc[test_indices].reset_index(drop=True)
+    test_indices = [int(i) for i in np.array(test_indices)+full_dataset.skipped_context]
+    test_dates = timestamps[-len(test_indices):].reset_index(drop=True)
 
     df_out = pd.DataFrame({
         'date': test_dates,
@@ -222,7 +225,18 @@ def objective(trial, config, csv_path, exp_path, suffix):
             trial.suggest_categorical('d_var', [int(x) for x in config.hyperopt.d_var])
             if hasattr(config.hyperopt, 'd_var')
             else getattr(config.model.transformer, 'd_var', emb_dim(tv))
+        ),
+        'dim_feedforward': (
+            trial.suggest_categorical('dim_feedforward', [int(x) for x in config.hyperopt.dim_feedforward])
+            if hasattr(config.hyperopt, 'dim_feedforward')
+            else 2048
+        ),
+        'activation': (
+            trial.suggest_categorical('activation', config.hyperopt.activation)
+            if hasattr(config.hyperopt, 'activation')
+            else 'relu'
         )
+
     }
 
 
@@ -238,7 +252,9 @@ def objective(trial, config, csv_path, exp_path, suffix):
         params['num_layers'], params['dropout'],
         train_loader=train_loader,
         d_freq=params['d_freq'],
-        d_var=params['d_var']
+        d_var=params['d_var'],
+        dim_feedforward=params['dim_feedforward'],
+        activation=params['activation']
     )
     model.to(device)
 
@@ -302,7 +318,9 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         config.model.transformer.d_model,
         config.model.transformer.nhead,
         config.model.transformer.num_layers,
-        config.model.transformer.dropout
+        config.model.transformer.dropout,
+        dim_feedforward=config.model.transformer.dim_feedforward,
+        activation=config.model.transformer.activation
     )
     model.to(device)
     criterion = nn.MSELoss()
@@ -395,7 +413,10 @@ def run_optuna(config, csv_path, exp_path, suffix):
         'dropout': best_params.get('dropout', config.model.transformer.dropout),
         'lr': best_params.get('lr', config.training.lr),
         'd_freq': best_params.get('d_freq', getattr(config.model.transformer, 'd_freq', emb_dim(tf))),
-        'd_var': best_params.get('d_var', getattr(config.model.transformer, 'd_var', emb_dim(tv)))
+        'd_var': best_params.get('d_var', getattr(config.model.transformer, 'd_var', emb_dim(tv))),
+        'dim_feedforward': best_params.get('dim_feedforward', 2048),
+        'activation': best_params.get('activation', 'relu'),
+
     }
 
     model = build_model(
@@ -404,7 +425,9 @@ def run_optuna(config, csv_path, exp_path, suffix):
         complete_params['num_layers'], complete_params['dropout'],
         train_loader=train_loader,
         d_freq=complete_params['d_freq'],
-        d_var=complete_params['d_var']
+        d_var=complete_params['d_var'],
+        dim_feedforward=complete_params['dim_feedforward'],
+        activation=complete_params['activation']
     )
 
     best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
@@ -426,6 +449,18 @@ def run_optuna(config, csv_path, exp_path, suffix):
     # Optionally save the merged config + best params for reproducibility
     with open(exp_path / 'full_final_params.yaml', 'w') as f:
         yaml.dump(complete_params, f)
+
+
+    # Clean up all but best model checkpoint
+    print("Cleaning up non-best model checkpoints...")
+    best_trial_number = study.best_trial.number
+    for path in exp_path.glob("best_model_trial_*.pt"):
+        trial_num = int(path.stem.split("_")[-1])
+        if trial_num != best_trial_number:
+            try:
+                path.unlink()
+            except Exception as e:
+                print(f"Failed to delete {path.name}: {e}")
 
 
 # ------------------------
