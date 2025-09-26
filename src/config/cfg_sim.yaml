@@ -1,0 +1,137 @@
+paths:
+  data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
+  data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
+  data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
+  outputs:
+    transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
+    ar_preds:              "outputs/ar_preds_{suffix}.csv"
+    midas_preds:           "outputs/midas_preds_{suffix}.csv"
+  # visualization:           "src/visualization"
+
+features:
+  target:         UNRATE
+  monthly_vars:
+    - RPI
+    - INDPRO
+    - CUMFNS
+    - HWI
+    - CLF16OV
+    - CE16OV
+    - UEMPMEAN
+    - CLAIMSx
+    - PAYEMS
+    - CES0600000007
+    - CES0600000008
+    - CES2000000008
+    - CES3000000008
+    - AWOTMAN
+    - AWHMAN
+    - HOUST
+    - DPCERA3M086SBEA
+    - BUSINVx
+    - RETAILx
+    - CMRMTSPLx
+    - M2REAL
+    - TOTRESNS
+    - BUSLOANS
+    - NONREVSL
+    - FEDFUNDS
+    - GS1
+    - GS10
+    - BAA
+    - PCEPI
+    - WPSFD49207
+    - OILPRICEx
+    - S&P 500
+    - S&P PE ratio
+    - TB3MS
+    - TB6MS
+  quarterly_vars:
+    - GDPC1
+    - GPDIC1
+    - PCECC96
+    - DPIC96
+    - OUTNFB
+    - UNRATE
+    - PCECTPI
+    - PCEPILFE
+    - CPIAUCSL
+    - CPILFESL
+    - FPIx
+    - EXPGSC1
+    - IMPGSC1
+  all_monthly:    false
+
+
+data:
+  context_days: 360
+  train_ratio:  0.8
+  val_ratio: 0.1
+  
+
+training:
+  seed:           125 #42
+  batch_size:     16
+  epochs:         300
+  lr:             1.0e-4
+  optimize:       true       # toggle Optuna
+  experiment_name: 'Test2'       # optional, or your custom name
+  patience:       10           # optional, early-stopping patience
+
+validation:
+  expected_freq:
+    M: MS
+    Q: 3MS
+
+model:
+  transformer:
+    d_model: 64
+    nhead: 4
+    num_layers: 4
+    dropout: 0.1
+    d_freq: null       # default: computed via log2
+    d_var: null        # default: computed via log2
+    dim_feedforward: 128
+    activation: "relu"
+
+  ar:
+    max_lag: 40
+  midas:
+    lags:
+      - 1
+      - 2
+      - 3
+      - 4
+      # - 5
+      # - 6
+    ar_lags: 1
+    use_y_lags: false
+
+
+evaluation:
+  forecast_files:
+    - ar_preds
+    - midas_preds
+    - transformer_preds
+  true_col: target
+  pred_col: predicted
+  
+
+
+hyperopt:
+  study_name: null  # optional name for the Optuna study
+  n_trials: 300
+  d_model: [16, 32, 64, 128, 256, 512, 24, 48, 96, 192, 384]
+  nhead: [1, 2, 4, 8]
+  num_layers: [1, 2, 3, 4]
+  dropout: [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
+  lr: [1e-5, 3e-5, 1e-4, 3e-4, 5e-4, 1e-3]
+  d_freq: [2, 4, 8, 16, 32, 128]
+  d_var: [4, 8, 16, 32, 64, 128]
+  dim_feedforward: [32, 64, 128, 256, 512, 1024, 2048, 4096]
+  activation: ["relu", "gelu"]
+  
+
+
+
+# ← make sure there’s a blank line at the end
