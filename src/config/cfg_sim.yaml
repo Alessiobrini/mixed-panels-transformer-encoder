@@ -1,5 +1,5 @@
 paths:
-  data_processed_template: "data/processed/sim_{suffix}.csv"
+  data_processed_template: "data/processed/long_format_synth_{suffix}.csv"
   outputs:
     transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
     ar_preds:              "outputs/ar_preds_{suffix}.csv"
@@ -16,8 +16,8 @@ simulation:
   nonlinearity: identity   # or "rbf"
   Lx: 1               # AR order for X
   Ly: 1               # AR order for Y
-  p_x: 8              # number of monthly vars -> X1..X8
-  p_y: 1              # number of quarterly vars -> Y1
+  p_x: 12              # number of monthly vars -> X1..X8
+  p_y: 4              # number of quarterly vars -> Y1
 
 features:
   target: Y1          # must be one of the generated Y-names; default is Y1 if omitted
