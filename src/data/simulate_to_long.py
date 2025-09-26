@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import pdb
 
 # ensure project root on path so `import src...` works
 project_root = Path(__file__).resolve().parents[2]
@@ -72,14 +73,14 @@ def simulate_hf_block(F, p_x, Lx, link, rng):
 
     X = np.zeros((T, p_x))
     eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
-    for t in range(max(1, Lx), T):
-        ar = sum(A[ℓ] @ X[t-ℓ-1] for ℓ in range(Lx))
+    for t in range(Lx, T):
+        ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
         X[t] = ar + B @ gF[t] + eps[t]
     return X
 
 def simulate_lf_block(F, r, p_y, Ly, link, rng):
     T, _ = F.shape
-    idx_q = np.arange(r-1, T, r)               # align LF at every r-th HF step
+    idx_q = np.arange(r-1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
     gF = link(F)                               
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
@@ -89,24 +90,19 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng):
     Y = np.zeros((len(idx_q), p_y))
     eps = rng.multivariate_normal(np.zeros(p_y), Sigma, size=len(idx_q))
     for i, t in enumerate(idx_q):
-        ar = sum(C[ℓ] @ Y[i-ℓ-1] for ℓ in range(1, min(Ly, i)+1))
+        # AR(Ly): use lags Y[i-1], Y[i-2], ..., Y[i-Ly]
+        max_l = min(Ly, i)
+        ar = sum(C[l - 1] @ Y[i - l] for l in range(1, max_l + 1))
         Y[i] = ar + D @ gF[t] + eps[i]
     return idx_q, Y
 
-# --------- build dates + long format identical to your converter ----------
-def build_dates(T_M, r, start="2000-01-01", place_quarter_at="end"):
-    # Monthly index (your converter keeps a single 'Timestamp' column downstream)
-    dates_M = pd.date_range(start=start, periods=T_M, freq="MS")
-    # Often you display EoM; switch if you prefer:
-    dates_M = dates_M + pd.offsets.MonthEnd(0)
+# --------- long format identical to fred md converter ----------
 
-    # Quarterly index aligned to monthly per r
-    T_Q = T_M // r
-    if place_quarter_at == "start":
-        dates_Q = pd.period_range(dates_M[0], periods=T_Q, freq="Q").to_timestamp(how="start")
-    else:
-        dates_Q = pd.period_range(dates_M[r-1], periods=T_Q, freq="Q").to_timestamp(how="end")
-    return dates_M, dates_Q
+def build_int_indices(T_M, idx_q):
+    """Return integer monthly and quarterly indices (no dates)."""
+    months = np.arange(T_M, dtype=int)    # 0,1,2,...,T_M-1
+    quarters = idx_q.astype(int)          # e.g., 2,5,8,... for r=3
+    return months, quarters
 
 def to_long(df_wide: pd.DataFrame, freq_label: str) -> pd.DataFrame:
     out = (
@@ -131,28 +127,20 @@ if __name__ == "__main__":
     q            = getattr(config.simulation, "latent_dim", 3)
     Lx           = getattr(config.simulation, "Lx", 1)
     Ly           = getattr(config.simulation, "Ly", 1)
-    start_date   = getattr(config.simulation, "start_date", "1990-01-01")
-    place_q_at   = getattr(config.simulation, "place_quarter_at", "end")  # "start" | "end"
 
-    # variable lists: we only need counts and names for output
-    # Your converter builds monthly_vars/quarterly_vars from config; do the same here:
-    if config.features.all_monthly:
-        # In your converter, you discover columns from a CSV; here we synthesize names
-        # Keep target in quarterly_vars like your current logic.
-        target = config.features.target
-        num_m  = getattr(config.simulation, "num_monthly", 8)
-        num_q  = getattr(config.simulation, "num_quarterly", 1)
-        monthly_vars   = [f"SIM_X{i+1}" for i in range(num_m)]
-        quarterly_vars = [target] if target else [f"SIM_Y1"]
-    else:
-        monthly_vars   = list(config.features.monthly_vars)
-        quarterly_vars = list(config.features.quarterly_vars)
-        # If user wants to keep target as quarterly as in converter, ensure it's present:
-        if config.features.target and config.features.target not in quarterly_vars:
-            quarterly_vars = [config.features.target] + quarterly_vars
+    # ----- variable names come from counts only: X1..Xp_x, Y1..Yp_y -----
+    # Use p_x / p_y from the simulation section (recommended). If not present,
+    # fall back to old num_monthly/num_quarterly for backward-compat.
+    p_x = getattr(config.simulation, "p_x", getattr(config.simulation, "num_monthly", 8))
+    p_y = getattr(config.simulation, "p_y", getattr(config.simulation, "num_quarterly", 1))
+    monthly_vars   = [f"X{i+1}" for i in range(p_x)]
+    quarterly_vars = [f"Y{j+1}" for j in range(p_y)]
+    # Target handling: default to "Y1" if not set or not among quarterly_vars
+    target = getattr(config.features, "target", None)
+    if not target or target not in quarterly_vars:
+        target = "Y1"
 
-    p_x = len(monthly_vars)
-    p_y = len(quarterly_vars)
+    pdb.set_trace()
 
     # --- Simulate on the monthly clock ---
     rng = np.random.RandomState(seed)
@@ -161,10 +149,10 @@ if __name__ == "__main__":
     X = simulate_hf_block(F, p_x=p_x, Lx=Lx, link=link, rng=rng)         # [T_M, p_x]
     idx_q, Y = simulate_lf_block(F, r=r, p_y=p_y, Ly=Ly, link=link, rng=rng)  # [T_Q, p_y]
 
-    # --- Build dates and assemble long format identical to your converter ---
-    dates_M, dates_Q = build_dates(T_M=X.shape[0], r=r, start=start_date, place_quarter_at=place_q_at)
-    dfM = pd.DataFrame(X, index=dates_M, columns=monthly_vars)
-    dfQ = pd.DataFrame(Y, index=dates_Q, columns=quarterly_vars)
+    # --- Build integer indices and assemble long format ---
+    idx_M, idx_Q = build_int_indices(T_M=X.shape[0], idx_q=idx_q)
+    dfM = pd.DataFrame(X, index=idx_M, columns=monthly_vars)
+    dfQ = pd.DataFrame(Y, index=idx_Q, columns=quarterly_vars)
 
     md_long = to_long(dfM, freq_label="M")
     qd_long = to_long(dfQ, freq_label="Q")
@@ -184,7 +172,7 @@ if __name__ == "__main__":
         .drop(columns=["FreqSort", "VarOrder"])
         .reset_index(drop=True)
     )
-
+    pdb.set_trace()
     # File naming convention identical to your converter
     suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"
     output_path = project_root / config.paths.data_processed_template.format(suffix=suffix)

@@ -1,66 +1,26 @@
 paths:
-  data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
-  data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
-  data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
+  data_processed_template: "data/processed/sim_{suffix}.csv"
   outputs:
     transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
     ar_preds:              "outputs/ar_preds_{suffix}.csv"
     midas_preds:           "outputs/midas_preds_{suffix}.csv"
   # visualization:           "src/visualization"
 
+
+
+simulation:
+  seed: 123
+  T_months: 360       # total HF steps
+  ratio: 3            # r months per quarterly observation
+  latent_dim: 3       # q (latent VAR dimension)
+  nonlinearity: identity   # or "rbf"
+  Lx: 1               # AR order for X
+  Ly: 1               # AR order for Y
+  p_x: 8              # number of monthly vars -> X1..X8
+  p_y: 1              # number of quarterly vars -> Y1
+
 features:
-  target:         UNRATE
-  monthly_vars:
-    - RPI
-    - INDPRO
-    - CUMFNS
-    - HWI
-    - CLF16OV
-    - CE16OV
-    - UEMPMEAN
-    - CLAIMSx
-    - PAYEMS
-    - CES0600000007
-    - CES0600000008
-    - CES2000000008
-    - CES3000000008
-    - AWOTMAN
-    - AWHMAN
-    - HOUST
-    - DPCERA3M086SBEA
-    - BUSINVx
-    - RETAILx
-    - CMRMTSPLx
-    - M2REAL
-    - TOTRESNS
-    - BUSLOANS
-    - NONREVSL
-    - FEDFUNDS
-    - GS1
-    - GS10
-    - BAA
-    - PCEPI
-    - WPSFD49207
-    - OILPRICEx
-    - S&P 500
-    - S&P PE ratio
-    - TB3MS
-    - TB6MS
-  quarterly_vars:
-    - GDPC1
-    - GPDIC1
-    - PCECC96
-    - DPIC96
-    - OUTNFB
-    - UNRATE
-    - PCECTPI
-    - PCEPILFE
-    - CPIAUCSL
-    - CPILFESL
-    - FPIx
-    - EXPGSC1
-    - IMPGSC1
-  all_monthly:    false
+  target: Y1          # must be one of the generated Y-names; default is Y1 if omitted
 
 
 data:
