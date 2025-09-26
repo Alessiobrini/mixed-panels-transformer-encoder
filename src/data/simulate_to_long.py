@@ -140,8 +140,6 @@ if __name__ == "__main__":
     if not target or target not in quarterly_vars:
         target = "Y1"
 
-    pdb.set_trace()
-
     # --- Simulate on the monthly clock ---
     rng = np.random.RandomState(seed)
     F, _ = simulate_latent_VAR2(T_months, q, seed=seed, burn_in=300)
@@ -172,7 +170,7 @@ if __name__ == "__main__":
         .drop(columns=["FreqSort", "VarOrder"])
         .reset_index(drop=True)
     )
-    pdb.set_trace()
+
     # File naming convention identical to your converter
     suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"
     output_path = project_root / config.paths.data_processed_template.format(suffix=suffix)
