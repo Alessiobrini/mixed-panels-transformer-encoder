@@ -79,6 +79,8 @@ def prepare_data(csv_path, config):
 
     train_idx, val_idx, test_idx = compute_split_indices(n, train_ratio, val_ratio, optimize)
 
+    full_dataset.fit_scalers_from_train_items(train_idx)
+
     train_loader = make_dataloader(full_dataset, train_idx, config.training.batch_size, collate_batch)
     test_loader  = make_dataloader(full_dataset, test_idx, config.training.batch_size, collate_batch)
 
@@ -281,20 +283,20 @@ def objective(trial, config, csv_path, exp_path, suffix):
 
         # Eval
         model.eval()
-        total_test = 0
+        total_val = 0
         with torch.no_grad():
             for batch in val_loader:
                 batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
                     value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
                 )
-                total_test += criterion(out, batch['target']).item()
-        avg_test = total_test / len(test_loader)
-        trial.report(avg_test, epoch)
+                total_val += criterion(out, batch['target']).item()
+        avg_val = total_val / len(val_loader)
+        trial.report(avg_val, epoch)
 
         # Early stopping
-        if avg_test < best_loss:
-            best_loss = avg_test
+        if avg_val < best_loss:
+            best_loss = avg_val
             wait = 0
             trial.set_user_attr("best_model_path", str(exp_path / f'best_model_trial_{trial.number}.pt'))
             torch.save(model.state_dict(), exp_path / f'best_model_trial_{trial.number}.pt')

@@ -44,22 +44,9 @@ class MixedFrequencyDataset(Dataset):
         self.df["freq_id"] = self.df[freq_column].map(self.freq_map)
         self.df["var_id"] = self.df[variable_column].map(self.var_map)
 
-        # Standardize values: one scaler per variable
         self.scalers = {}
-        scaled_values = []
-        for var in self.df[self.variable_column].unique():
-            mask = self.df[self.variable_column] == var
-            scaler = StandardScaler()
-            scaled_col = scaler.fit_transform(self.df.loc[mask, [value_column]])
-        
-            self.scalers[var] = scaler
-            scaled_values.append(pd.Series(scaled_col.flatten(), index=self.df[mask].index))
-        
-        # Merge all scaled values and assign in original order
-        self.df["scaled_value"] = pd.concat(scaled_values).sort_index()
-        
-        # Keep the scaler for the target variable to use later during inverse transform
-        self.scaler = self.scalers[self.target_variable]
+        self.scaler = None
+        self.df["scaled_value"] = np.nan  # will be filled after train-only fit
  
         # Build list of sequence/target pairs
         self.skipped_context = 0
@@ -109,18 +96,24 @@ class MixedFrequencyDataset(Dataset):
                 continue  # Not enough history to build context
     
             # Extract context window
-            context_df = self.df[
-                (self.df["time_id"] >= context_start) & 
-                (self.df["time_id"] <= context_end)
-            ]
+            # context_df = self.df[
+            #     (self.df["time_id"] >= context_start) & 
+            #     (self.df["time_id"] <= context_end)
+            # ]
 
-            if context_df.empty:
+            # if context_df.empty:
+            #     self.skipped_context += 1
+            #     continue  # Skip if context has no data
+            context_idx = self.df.index[(self.df["time_id"] >= context_start) & (self.df["time_id"] <= context_end)]
+            if len(context_idx) == 0:
                 self.skipped_context += 1
-                continue  # Skip if context has no data
+                continue
  
             result.append({
-                "context": context_df,
-                "target_value": float(row["scaled_value"])
+                "context_idx": context_idx.to_numpy(),
+                # "context": context_df,
+                # "target_value": float(row["scaled_value"]),
+                "target_idx": int(row.name)
 
             })
   
@@ -130,14 +123,50 @@ class MixedFrequencyDataset(Dataset):
     def __len__(self) -> int:
         return len(self.sequence_windows)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int):
         item = self.sequence_windows[idx]
-        context = item["context"]
-
+        ctx = self.df.loc[item["context_idx"]]                  
+        y  = float(self.df.loc[item["target_idx"], "scaled_value"])
+    
         return {
-            "value": torch.tensor(context["scaled_value"].values, dtype=torch.float32),
-            "var_id": torch.tensor(context["var_id"].values, dtype=torch.long),
-            "freq_id": torch.tensor(context["freq_id"].values, dtype=torch.long),
-            "time_id": torch.tensor(context["time_id"].values, dtype=torch.long),
-            "target": torch.tensor(item["target_value"], dtype=torch.float32)
+            "value":  torch.tensor(ctx["scaled_value"].values, dtype=torch.float32),
+            "var_id": torch.tensor(ctx["var_id"].values,       dtype=torch.long),
+            "freq_id":torch.tensor(ctx["freq_id"].values,      dtype=torch.long),
+            "time_id":torch.tensor(ctx["time_id"].values,      dtype=torch.long),
+            "target": torch.tensor(y,                           dtype=torch.float32),
         }
+    
+
+    def fit_scalers_from_train_items(self, train_item_indices: List[int]) -> None:
+        """
+        Fit one StandardScaler per variable using ONLY the observations that
+        appear in the context windows of the given train items. Then apply
+        those scalers to transform the entire df into 'scaled_value'.
+        """
+        # collect all row indices used in train contexts
+        ctx_idx = pd.Index([])
+        for i in train_item_indices:
+            ctx_idx = ctx_idx.union(pd.Index(self.sequence_windows[i]["context_idx"]))
+        cutoff = int(self.df.loc[ctx_idx, "time_id"].max()) if len(ctx_idx) else int(self.df["time_id"].min())
+
+        # (re)fit per-variable scalers on train-context rows only
+        self.scalers = {}
+        for var in self.df[self.variable_column].unique():
+            mask_var_trainctx = (self.df[self.variable_column] == var) & (self.df.index.isin(ctx_idx))
+            # fallback: if a variable never appears in train contexts, fit on earliest available rows of that var
+            if not mask_var_trainctx.any():
+                mask_var_trainctx = (self.df[self.variable_column] == var) & (self.df["time_id"] <= cutoff)
+            scaler = StandardScaler().fit(self.df.loc[mask_var_trainctx, [self.value_column]])
+            self.scalers[var] = scaler
+        
+        # write 'scaled_value' for ALL rows using train-only scalers
+        scaled_values = []
+        for var, scaler in self.scalers.items():
+            m = (self.df[self.variable_column] == var)
+            vals = scaler.transform(self.df.loc[m, [self.value_column]]).ravel()
+            scaled_values.append(pd.Series(vals, index=self.df[m].index))
+        self.df["scaled_value"] = pd.concat(scaled_values).sort_index()
+
+    
+        # keep a handy handle to the target scaler for inverse_transform in evaluation
+        self.scaler = self.scalers[self.target_variable]
