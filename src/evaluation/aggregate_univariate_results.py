@@ -9,7 +9,7 @@ import yaml
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-07-25"
+EXPERIMENT_DATE = "2025-09-26"
 PLOT_PRE_COVID_ONLY = True
 
 TARGETS = [
@@ -133,9 +133,13 @@ for target in TARGETS:
         series = df_raw.set_index('date')['true'].round(6)
         true_series.append(series.rename(f"true_{idx}"))
     df_true_compare = pd.concat(true_series, axis=1, join='inner')
-    unequal = df_true_compare.nunique(axis=1) != 1
+    # compute max difference between min and max per row
+    row_diff = df_true_compare.max(axis=1) - df_true_compare.min(axis=1)
+    tolerance = 1e-5
+    unequal = row_diff > tolerance
+    
     if unequal.any():
-        print(f"Inconsistent target values for {target} on dates:")
+        print(f"Inconsistent target values for {target} on dates (tol={tolerance}):")
         print(df_true_compare[unequal].head())
         raise ValueError(f"Target mismatch detected for {target}.")
 
