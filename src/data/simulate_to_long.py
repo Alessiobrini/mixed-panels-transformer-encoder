@@ -63,28 +63,63 @@ def make_link(kind, q, out_dim, rng):
     return lambda F: rbf_features(F, rng, out_dim)
 
 # --------- simulate HF (monthly) and LF (quarterly) blocks ----------
-def simulate_hf_block(F, p_x, Lx, link, rng):
+def _almon_polynomial_weights(num_lags: int, rng, degree: int = 2):
+    """Return Almon polynomial weights that decay with the lag index."""
+    if num_lags <= 0:
+        return np.zeros(0, dtype=float)
+
+    idx = np.arange(num_lags, dtype=float)
+    X = np.vstack([idx ** d for d in range(degree + 1)]).T
+    coeffs = rng.normal(0.0, 0.5, size=(degree + 1,))
+    # ensure decay by keeping intercept positive and higher-order terms non-positive
+    coeffs[0] = np.abs(coeffs[0]) + 0.5
+    coeffs[1:] = -np.abs(coeffs[1:])
+    weights = X @ coeffs
+    weights = np.maximum(weights, 1e-6)
+    weights /= weights.sum()
+    return weights
+
+
+def make_almon_lag_matrices(num_lags: int, out_dim: int, factor_dim: int, rng, degree: int = 2):
+    if num_lags <= 0:
+        return np.zeros((0, out_dim, factor_dim))
+
+    weights = _almon_polynomial_weights(num_lags, rng, degree=degree)
+    base_loadings = rng.uniform(0.1, 0.6, size=(out_dim, factor_dim))
+    Lambda = np.zeros((num_lags, out_dim, factor_dim))
+    for lag in range(num_lags):
+        signs = rng.choice([-1.0, 1.0], size=(out_dim, factor_dim))
+        Lambda[lag] = base_loadings * weights[lag] * signs
+    return Lambda
+
+
+def simulate_hf_block(F, p_x, Lx, link, rng, q_fx):
     T, _ = F.shape
     gF = link(F)                               # [T, d_g]
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
-    B = rng.uniform(-0.6, 0.6, size=(p_x, d_g))
+    Lambda_fx = make_almon_lag_matrices(q_fx + 1, p_x, d_g, rng)
     Sigma = 0.5 * np.eye(p_x)
 
     X = np.zeros((T, p_x))
     eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
     for t in range(Lx, T):
         ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
-        X[t] = ar + B @ gF[t] + eps[t]
+        factor_terms = sum(
+            Lambda_fx[lag] @ gF[t - lag]
+            for lag in range(q_fx + 1)
+            if t - lag >= 0
+        )
+        X[t] = ar + factor_terms + eps[t]
     return X
 
-def simulate_lf_block(F, r, p_y, Ly, link, rng):
+def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy):
     T, _ = F.shape
     idx_q = np.arange(r-1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
     gF = link(F)                               
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
-    D = rng.uniform(-0.6, 0.6, size=(p_y, d_g))
+    Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng)
     Sigma = 0.5 * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
@@ -93,7 +128,12 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng):
         # AR(Ly): use lags Y[i-1], Y[i-2], ..., Y[i-Ly]
         max_l = min(Ly, i)
         ar = sum(C[l - 1] @ Y[i - l] for l in range(1, max_l + 1))
-        Y[i] = ar + D @ gF[t] + eps[i]
+        factor_terms = sum(
+            Lambda_fy[lag] @ gF[t - lag]
+            for lag in range(q_fy + 1)
+            if t - lag >= 0
+        )
+        Y[i] = ar + factor_terms + eps[i]
     return idx_q, Y
 
 # --------- long format identical to fred md converter ----------
@@ -141,8 +181,23 @@ if __name__ == "__main__":
     rng = np.random.RandomState(seed)
     F, _ = simulate_latent_VAR2(T_months, q, seed=seed, burn_in=300)
     link = make_link(nonlinear, q=q, out_dim=q, rng=rng)
-    X = simulate_hf_block(F, p_x=p_x, Lx=Lx, link=link, rng=rng)         # [T_M, p_x]
-    idx_q, Y = simulate_lf_block(F, r=r, p_y=p_y, Ly=Ly, link=link, rng=rng)  # [T_Q, p_y]
+    factor_lags = getattr(config.simulation, "factor_lags", None)
+    if factor_lags is None:
+        q_fx = q_fy = 0
+    else:
+        q_fx = getattr(factor_lags, "q_fx", 0)
+        q_fy = getattr(factor_lags, "q_fy", 0)
+
+    X = simulate_hf_block(F, p_x=p_x, Lx=Lx, link=link, rng=rng, q_fx=q_fx)         # [T_M, p_x]
+    idx_q, Y = simulate_lf_block(
+        F,
+        r=r,
+        p_y=p_y,
+        Ly=Ly,
+        link=link,
+        rng=rng,
+        q_fy=q_fy,
+    )  # [T_Q, p_y]
 
     # --- Build integer indices and assemble long format ---
     idx_M, idx_Q = build_int_indices(T_M=X.shape[0], idx_q=idx_q)
