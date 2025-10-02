@@ -16,7 +16,9 @@ simulation:
   T_months: 360       # total HF steps
   ratio: 3            # r months per quarterly observation
   latent_dim: 3       # q (latent VAR dimension)
-  nonlinearity: identity   # or "rbf"
+  nonlinearity:
+    type: identity   # or "rbf"
+    # output_std_match: true  # optional, applies when type: rbf
   Lx: 1               # AR order for X
   Ly: 1               # AR order for Y
   factor_lags:
