@@ -62,6 +62,19 @@ def make_link(kind, q, out_dim, rng):
         return lambda F: id_features(F)
     return lambda F: rbf_features(F, rng, out_dim)
 
+# --------- noise helpers ----------
+def _student_t_noise(rng, size, Sigma, df):
+    if df <= 2:
+        raise ValueError("Student-t noise requires df > 2 for finite variance.")
+
+    dim = Sigma.shape[0]
+    base = rng.multivariate_normal(np.zeros(dim), Sigma, size=size)
+    chi = rng.chisquare(df, size=size)
+    scale = np.sqrt(chi / df)
+    scale = np.maximum(scale, np.sqrt(np.finfo(float).tiny))
+    adjust = np.sqrt((df - 2) / df)
+    return (base / scale[..., None]) * adjust
+
 # --------- simulate HF (monthly) and LF (quarterly) blocks ----------
 def _almon_polynomial_weights(num_lags: int, rng, degree: int = 2):
     """Return Almon polynomial weights that decay with the lag index."""
@@ -93,16 +106,22 @@ def make_almon_lag_matrices(num_lags: int, out_dim: int, factor_dim: int, rng, d
     return Lambda
 
 
-def simulate_hf_block(F, p_x, Lx, link, rng, q_fx):
+def simulate_hf_block(F, p_x, Lx, link, rng, q_fx, noise_kind="student_t", cov_scale=1.0, student_df=8):
     T, _ = F.shape
     gF = link(F)                               # [T, d_g]
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
     Lambda_fx = make_almon_lag_matrices(q_fx + 1, p_x, d_g, rng)
-    Sigma = 0.5 * np.eye(p_x)
+    Sigma = cov_scale * np.eye(p_x)
 
     X = np.zeros((T, p_x))
-    eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
+    noise_kind = noise_kind.lower()
+    if noise_kind in {"student_t", "student-t", "studentt", "t"}:
+        eps = _student_t_noise(rng, size=T, Sigma=Sigma, df=student_df)
+    elif noise_kind in {"gaussian", "normal"}:
+        eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
+    else:
+        raise ValueError(f"Unsupported noise kind for X block: {noise_kind}")
     for t in range(Lx, T):
         ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
         factor_terms = sum(
@@ -113,14 +132,14 @@ def simulate_hf_block(F, p_x, Lx, link, rng, q_fx):
         X[t] = ar + factor_terms + eps[t]
     return X
 
-def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy):
+def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0):
     T, _ = F.shape
     idx_q = np.arange(r-1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
-    gF = link(F)                               
+    gF = link(F)
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
     Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng)
-    Sigma = 0.5 * np.eye(p_y)
+    Sigma = cov_scale * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
     eps = rng.multivariate_normal(np.zeros(p_y), Sigma, size=len(idx_q))
@@ -188,7 +207,20 @@ if __name__ == "__main__":
         q_fx = getattr(factor_lags, "q_fx", 0)
         q_fy = getattr(factor_lags, "q_fy", 0)
 
-    X = simulate_hf_block(F, p_x=p_x, Lx=Lx, link=link, rng=rng, q_fx=q_fx)         # [T_M, p_x]
+    noise_x_distribution = getattr(config.simulation, "noise_x_distribution", "student_t")
+    cov_scale_x = getattr(config.simulation, "cov_scale_x", 1.0)
+    cov_scale_y = getattr(config.simulation, "cov_scale_y", 1.0)
+
+    X = simulate_hf_block(
+        F,
+        p_x=p_x,
+        Lx=Lx,
+        link=link,
+        rng=rng,
+        q_fx=q_fx,
+        noise_kind=noise_x_distribution,
+        cov_scale=cov_scale_x,
+    )         # [T_M, p_x]
     idx_q, Y = simulate_lf_block(
         F,
         r=r,
@@ -197,6 +229,7 @@ if __name__ == "__main__":
         link=link,
         rng=rng,
         q_fy=q_fy,
+        cov_scale=cov_scale_y,
     )  # [T_Q, p_y]
 
     # --- Build integer indices and assemble long format ---
