@@ -60,7 +60,7 @@ def simulate_latent_VAR2(T, q, seed=123, burn_in=300):
 def id_features(F):
     return F
 
-def rbf_features(F, rng, out_dim):
+def rbf_features(F, rng, out_dim, output_std_match=False):
     # centers ~ N(0,1), median distance gamma heuristic
     K, q = out_dim, F.shape[1]
     C = rng.normal(0, 1, size=(K, q))
@@ -74,12 +74,24 @@ def rbf_features(F, rng, out_dim):
     Phi = np.exp(-gamma * d2)
     std = Phi.std(axis=0, keepdims=True)
     std[std == 0] = 1.0
-    return Phi / std
+    Phi = Phi / std
+    if output_std_match:
+        target_std = F.std(axis=0, keepdims=True)
+        target_std[target_std == 0] = 1.0
+        if Phi.shape[1] != target_std.shape[1]:
+            raise ValueError(
+                "RBF output_std_match requires out_dim to equal the latent dimension."
+            )
+        Phi = Phi * target_std
+    return Phi
 
-def make_link(kind, q, out_dim, rng):
-    if kind.lower() in ("linear", "identity", "id"):
+def make_link(kind, q, out_dim, rng, *, output_std_match=False):
+    kind = kind.lower()
+    if kind in ("linear", "identity", "id"):
         return lambda F: id_features(F)
-    return lambda F: rbf_features(F, rng, out_dim)
+    if kind == "rbf":
+        return lambda F: rbf_features(F, rng, out_dim, output_std_match=output_std_match)
+    raise ValueError(f"Unsupported nonlinearity type: {kind}")
 
 # --------- noise helpers ----------
 def _student_t_noise(rng, size, Sigma, df):
@@ -204,8 +216,20 @@ if __name__ == "__main__":
     seed         = getattr(config.simulation, "seed", 123)
     T_months     = getattr(config.simulation, "T_months", 360)    # e.g., 30 years
     r            = getattr(config.simulation, "ratio", 3)         # 3 months per quarter
-    nonlinear    = getattr(config.simulation, "nonlinearity", "identity")  # or "rbf"
     q            = getattr(config.simulation, "latent_dim", 3)
+    nonlinear_cfg = getattr(config.simulation, "nonlinearity", "identity")
+    if isinstance(nonlinear_cfg, str):
+        nonlinear_type = nonlinear_cfg
+        nonlinear_out_dim = q
+        nonlinear_std_match = False
+    elif isinstance(nonlinear_cfg, dict):
+        nonlinear_type = nonlinear_cfg.get("type", "identity")
+        nonlinear_out_dim = nonlinear_cfg.get("out_dim", q)
+        nonlinear_std_match = nonlinear_cfg.get("output_std_match", False)
+    else:
+        nonlinear_type = getattr(nonlinear_cfg, "type", "identity")
+        nonlinear_out_dim = getattr(nonlinear_cfg, "out_dim", q)
+        nonlinear_std_match = getattr(nonlinear_cfg, "output_std_match", False)
     Lx           = getattr(config.simulation, "Lx", 1)
     Ly           = getattr(config.simulation, "Ly", 1)
 
@@ -220,7 +244,13 @@ if __name__ == "__main__":
     # --- Simulate on the monthly clock ---
     rng = np.random.RandomState(seed)
     F, _ = simulate_latent_VAR2(T_months, q, seed=seed, burn_in=300)
-    link = make_link(nonlinear, q=q, out_dim=q, rng=rng)
+    link = make_link(
+        nonlinear_type,
+        q=q,
+        out_dim=nonlinear_out_dim,
+        rng=rng,
+        output_std_match=nonlinear_std_match,
+    )
     factor_lags = getattr(config.simulation, "factor_lags", None)
     if factor_lags is None:
         q_fx = q_fy = 0
