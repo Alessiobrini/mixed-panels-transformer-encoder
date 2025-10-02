@@ -244,16 +244,28 @@ if __name__ == "__main__":
     nonlinear_cfg = getattr(config.simulation, "nonlinearity", "identity")
     if isinstance(nonlinear_cfg, str):
         nonlinear_type = nonlinear_cfg
-        nonlinear_out_dim = q
-        nonlinear_std_match = False
+        nonlinear_out_dim = getattr(config.simulation, "nonlinearity_out_dim", q)
+        nonlinear_std_match = getattr(config.simulation, "nonlinearity_std_match", False)
     elif isinstance(nonlinear_cfg, dict):
         nonlinear_type = nonlinear_cfg.get("type", "identity")
-        nonlinear_out_dim = nonlinear_cfg.get("out_dim", q)
-        nonlinear_std_match = nonlinear_cfg.get("output_std_match", False)
+        nonlinear_out_dim = nonlinear_cfg.get(
+            "out_dim", getattr(config.simulation, "nonlinearity_out_dim", q)
+        )
+        nonlinear_std_match = nonlinear_cfg.get(
+            "output_std_match", getattr(config.simulation, "nonlinearity_std_match", False)
+        )
     else:
         nonlinear_type = getattr(nonlinear_cfg, "type", "identity")
-        nonlinear_out_dim = getattr(nonlinear_cfg, "out_dim", q)
-        nonlinear_std_match = getattr(nonlinear_cfg, "output_std_match", False)
+        nonlinear_out_dim = getattr(
+            nonlinear_cfg,
+            "out_dim",
+            getattr(config.simulation, "nonlinearity_out_dim", q),
+        )
+        nonlinear_std_match = getattr(
+            nonlinear_cfg,
+            "output_std_match",
+            getattr(config.simulation, "nonlinearity_std_match", False),
+        )
     Lx           = getattr(config.simulation, "Lx", 1)
     Ly           = getattr(config.simulation, "Ly", 1)
 
