@@ -24,6 +24,24 @@ def _make_stable_var2(Phi1, Phi2, target=0.9):
         Phi2 *= target / rho
     return Phi1, Phi2
 
+def _make_stable_ar(mats, target=0.9):
+    if not mats:
+        return mats
+
+    p = mats[0].shape[0]
+    L = len(mats)
+
+    companion = np.zeros((p * L, p * L))
+    companion[:p, :] = np.hstack(mats)
+    if L > 1:
+        companion[p:, :-p] = np.eye(p * (L - 1))
+
+    rho = _spectral_radius(companion)
+    if rho >= target and rho > 0:
+        scale = target / rho
+        mats = [A * scale for A in mats]
+    return mats
+
 def simulate_latent_VAR2(T, q, seed=123, burn_in=300):
     rng = np.random.RandomState(seed)
     Phi1 = rng.uniform(-0.6, 0.6, size=(q, q))
@@ -68,6 +86,7 @@ def simulate_hf_block(F, p_x, Lx, link, rng):
     gF = link(F)                               # [T, d_g]
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
+    A = _make_stable_ar(A, target=0.9)
     B = rng.uniform(-0.6, 0.6, size=(p_x, d_g))
     Sigma = 0.5 * np.eye(p_x)
 
@@ -84,6 +103,7 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng):
     gF = link(F)                               
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
+    C = _make_stable_ar(C, target=0.9)
     D = rng.uniform(-0.6, 0.6, size=(p_y, d_g))
     Sigma = 0.5 * np.eye(p_y)
 
