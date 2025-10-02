@@ -43,8 +43,9 @@ def _rescale_var_mats(mats, target=0.9):
         mats = [A * scale for A in mats]
     return mats
 
-def simulate_latent_VAR2(T, q, seed=123, burn_in=300):
-    rng = np.random.RandomState(seed)
+def simulate_latent_VAR2(T, q, rng=None, burn_in=300):
+    if rng is None:
+        rng = np.random.RandomState(123)
     Phi1 = rng.uniform(-0.6, 0.6, size=(q, q))
     Phi2 = rng.uniform(-0.6, 0.6, size=(q, q))
     Phi1, Phi2 = _make_stable_var2(Phi1, Phi2, target=0.9)
@@ -137,9 +138,23 @@ def make_almon_lag_matrices(num_lags: int, out_dim: int, factor_dim: int, rng, d
     return Lambda
 
 
-def simulate_hf_block(F, p_x, Lx, link, rng, q_fx, noise_kind="student_t", cov_scale=1.0, student_df=8):
+def simulate_hf_block(
+    F,
+    p_x,
+    Lx,
+    link,
+    rng,
+    q_fx,
+    noise_kind="student_t",
+    cov_scale=1.0,
+    student_df=8,
+    gF=None,
+):
     T, _ = F.shape
-    gF = link(F)                               # [T, d_g]
+    if gF is None:
+        gF = link(F)                               # [T, d_g]
+    elif gF.shape[0] != T:
+        raise ValueError("Length mismatch between provided factors and F in HF block.")
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
     A = _rescale_var_mats(A, target=0.9)
@@ -164,10 +179,13 @@ def simulate_hf_block(F, p_x, Lx, link, rng, q_fx, noise_kind="student_t", cov_s
         X[t] = ar + factor_terms + eps[t]
     return X
 
-def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0):
+def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0, gF=None):
     T, _ = F.shape
-    idx_q = np.arange(r-1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
-    gF = link(F)
+    idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
+    if gF is None:
+        gF = link(F)
+    elif gF.shape[0] != T:
+        raise ValueError("Length mismatch between provided factors and F in LF block.")
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
     C = _rescale_var_mats(C, target=0.9)
@@ -177,13 +195,19 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0):
     Y = np.zeros((len(idx_q), p_y))
     eps = rng.multivariate_normal(np.zeros(p_y), Sigma, size=len(idx_q))
     for i, t in enumerate(idx_q):
+        # Convert quarterly index to the corresponding monthly step (zero-based)
+        expected_idx = (i + 1) * r - 1
+        if expected_idx != t:
+            raise ValueError("Low-frequency index misaligned with aggregation ratio.")
+        quarter_month_idx = expected_idx
+
         # AR(Ly): use lags Y[i-1], Y[i-2], ..., Y[i-Ly]
         max_l = min(Ly, i)
         ar = sum(C[l - 1] @ Y[i - l] for l in range(1, max_l + 1))
         factor_terms = sum(
-            Lambda_fy[lag] @ gF[t - lag]
+            Lambda_fy[lag] @ gF[quarter_month_idx - lag]
             for lag in range(q_fy + 1)
-            if t - lag >= 0
+            if quarter_month_idx - lag >= 0
         )
         Y[i] = ar + factor_terms + eps[i]
     return idx_q, Y
@@ -243,14 +267,6 @@ if __name__ == "__main__":
 
     # --- Simulate on the monthly clock ---
     rng = np.random.RandomState(seed)
-    F, _ = simulate_latent_VAR2(T_months, q, seed=seed, burn_in=300)
-    link = make_link(
-        nonlinear_type,
-        q=q,
-        out_dim=nonlinear_out_dim,
-        rng=rng,
-        output_std_match=nonlinear_std_match,
-    )
     factor_lags = getattr(config.simulation, "factor_lags", None)
     if factor_lags is None:
         q_fx = q_fy = 0
@@ -258,12 +274,27 @@ if __name__ == "__main__":
         q_fx = getattr(factor_lags, "q_fx", 0)
         q_fy = getattr(factor_lags, "q_fy", 0)
 
+    default_burn_in = max(50, q_fx + q_fy + 5)
+    burn_in = getattr(config.simulation, "burn_in", default_burn_in)
+
+    link = make_link(
+        nonlinear_type,
+        q=q,
+        out_dim=nonlinear_out_dim,
+        rng=rng,
+        output_std_match=nonlinear_std_match,
+    )
+
+    total_steps = T_months + burn_in
+    F_full, _ = simulate_latent_VAR2(total_steps, q, rng=rng, burn_in=burn_in)
+    gF_full = link(F_full)
+
     noise_x_distribution = getattr(config.simulation, "noise_x_distribution", "student_t")
     cov_scale_x = getattr(config.simulation, "cov_scale_x", 1.0)
     cov_scale_y = getattr(config.simulation, "cov_scale_y", 1.0)
 
-    X = simulate_hf_block(
-        F,
+    X_full = simulate_hf_block(
+        F_full,
         p_x=p_x,
         Lx=Lx,
         link=link,
@@ -271,9 +302,10 @@ if __name__ == "__main__":
         q_fx=q_fx,
         noise_kind=noise_x_distribution,
         cov_scale=cov_scale_x,
-    )         # [T_M, p_x]
-    idx_q, Y = simulate_lf_block(
-        F,
+        gF=gF_full,
+    )         # [T_total, p_x]
+    idx_q_full, Y_full = simulate_lf_block(
+        F_full,
         r=r,
         p_y=p_y,
         Ly=Ly,
@@ -281,7 +313,14 @@ if __name__ == "__main__":
         rng=rng,
         q_fy=q_fy,
         cov_scale=cov_scale_y,
-    )  # [T_Q, p_y]
+        gF=gF_full,
+    )  # [T_Q_full, p_y]
+
+    # Discard burn-in observations across all simulated series
+    X = X_full[burn_in:]
+    mask_q = idx_q_full >= burn_in
+    idx_q = idx_q_full[mask_q] - burn_in
+    Y = Y_full[mask_q]
 
     # --- Build integer indices and assemble long format ---
     idx_M, idx_Q = build_int_indices(T_M=X.shape[0], idx_q=idx_q)
