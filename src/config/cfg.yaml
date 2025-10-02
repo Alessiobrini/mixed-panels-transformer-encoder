@@ -2,11 +2,25 @@ paths:
   data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
   data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
   data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
+  data_processed_template_simulation: "data/processed/long_format_synth_{suffix}.csv"
   outputs:
     transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
     ar_preds:              "outputs/ar_preds_{suffix}.csv"
     midas_preds:           "outputs/midas_preds_{suffix}.csv"
   # visualization:           "src/visualization"
+
+
+simulation:
+  simulate: true
+  seed: 123
+  T_months: 360       # total HF steps
+  ratio: 3            # r months per quarterly observation
+  latent_dim: 3       # q (latent VAR dimension)
+  nonlinearity: identity   # or "rbf"
+  Lx: 1               # AR order for X
+  Ly: 1               # AR order for Y
+  p_x: 12              # number of monthly vars -> X1..X8
+  p_y: 4              # number of quarterly vars -> Y1
 
 features:
   target:         UNRATE
@@ -71,10 +85,10 @@ data:
 training:
   seed:           125 #42
   batch_size:     16
-  epochs:         300
+  epochs:         2
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'Test2'       # optional, or your custom name
+  experiment_name: 'Test3'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
 validation:
@@ -119,7 +133,7 @@ evaluation:
 
 hyperopt:
   study_name: null  # optional name for the Optuna study
-  n_trials: 300
+  n_trials: 2
   d_model: [16, 32, 64, 128, 256, 512, 24, 48, 96, 192, 384]
   nhead: [1, 2, 4, 8]
   num_layers: [1, 2, 3, 4]

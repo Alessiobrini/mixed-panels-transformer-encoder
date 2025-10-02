@@ -116,10 +116,11 @@ def to_long(df_wide: pd.DataFrame, freq_label: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # --- Read config and match your existing I/O contract ---
-    cfg_path = project_root / "src" / "config" / "cfg_sim.yaml"
+    cfg_path = project_root / "src" / "config" / "cfg.yaml"
     config = Config(cfg_path)
 
     # knobs (choose defaults that mirror your real pipeline)
+    simulate         = getattr(config.simulation, "simulate", True)
     seed         = getattr(config.simulation, "seed", 123)
     T_months     = getattr(config.simulation, "T_months", 360)    # e.g., 30 years
     r            = getattr(config.simulation, "ratio", 3)         # 3 months per quarter
@@ -135,10 +136,6 @@ if __name__ == "__main__":
     p_y = getattr(config.simulation, "p_y", getattr(config.simulation, "num_quarterly", 1))
     monthly_vars   = [f"X{i+1}" for i in range(p_x)]
     quarterly_vars = [f"Y{j+1}" for j in range(p_y)]
-    # Target handling: default to "Y1" if not set or not among quarterly_vars
-    target = getattr(config.features, "target", None)
-    if not target or target not in quarterly_vars:
-        target = "Y1"
 
     # --- Simulate on the monthly clock ---
     rng = np.random.RandomState(seed)
@@ -173,7 +170,7 @@ if __name__ == "__main__":
 
     # File naming convention identical to your converter
     suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"
-    output_path = project_root / config.paths.data_processed_template.format(suffix=suffix)
+    output_path = project_root / config.paths.data_processed_template_simulation.format(suffix=suffix)
     long_df.to_csv(output_path, index=False)
     print(long_df.head())
     print(f"\nSaved simulated long-format data to: {output_path.resolve()}")
