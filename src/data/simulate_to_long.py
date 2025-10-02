@@ -24,6 +24,25 @@ def _make_stable_var2(Phi1, Phi2, target=0.9):
         Phi2 *= target / rho
     return Phi1, Phi2
 
+
+def _rescale_var_mats(mats, target=0.9):
+    """Rescale VAR coefficient matrices to keep spectral radius <= ``target``."""
+    if not mats:
+        return mats
+
+    p = mats[0].shape[0]
+    L = len(mats)
+    companion = np.zeros((p * L, p * L))
+    companion[:p, :p * L] = np.hstack(mats)
+    if L > 1:
+        companion[p:, :-p] = np.eye(p * (L - 1))
+
+    rho = _spectral_radius(companion)
+    if rho > target:
+        scale = target / rho
+        mats = [A * scale for A in mats]
+    return mats
+
 def simulate_latent_VAR2(T, q, seed=123, burn_in=300):
     rng = np.random.RandomState(seed)
     Phi1 = rng.uniform(-0.6, 0.6, size=(q, q))
@@ -111,6 +130,7 @@ def simulate_hf_block(F, p_x, Lx, link, rng, q_fx, noise_kind="student_t", cov_s
     gF = link(F)                               # [T, d_g]
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
+    A = _rescale_var_mats(A, target=0.9)
     Lambda_fx = make_almon_lag_matrices(q_fx + 1, p_x, d_g, rng)
     Sigma = cov_scale * np.eye(p_x)
 
@@ -138,6 +158,7 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0):
     gF = link(F)
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
+    C = _rescale_var_mats(C, target=0.9)
     Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng)
     Sigma = cov_scale * np.eye(p_y)
 
