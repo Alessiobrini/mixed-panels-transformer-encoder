@@ -63,29 +63,43 @@ def make_link(kind, q, out_dim, rng):
     return lambda F: rbf_features(F, rng, out_dim)
 
 # --------- simulate HF (monthly) and LF (quarterly) blocks ----------
-def simulate_hf_block(F, p_x, Lx, link, rng):
+def _sample_student_t(rng, size, cov, df):
+    if df <= 2:
+        raise ValueError("Student-t distribution requires df > 2 for finite variance")
+    p = cov.shape[0]
+    chol = np.linalg.cholesky(cov)
+    normal = rng.normal(size=(size, p)) @ chol.T
+    v = rng.chisquare(df, size=size)
+    scale = np.sqrt((df - 2) / v)
+    return normal * scale[:, None]
+
+
+def simulate_hf_block(F, p_x, Lx, link, rng, noise_kind="gaussian", cov_scale=1.0, student_df=8):
     T, _ = F.shape
     gF = link(F)                               # [T, d_g]
     d_g = gF.shape[1]
     A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
     B = rng.uniform(-0.6, 0.6, size=(p_x, d_g))
-    Sigma = 0.5 * np.eye(p_x)
+    Sigma = cov_scale * 0.5 * np.eye(p_x)
 
     X = np.zeros((T, p_x))
-    eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
+    if noise_kind.lower() in ("t", "student-t", "student_t", "studentt"):
+        eps = _sample_student_t(rng, size=T, cov=Sigma, df=student_df)
+    else:
+        eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
     for t in range(Lx, T):
         ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
         X[t] = ar + B @ gF[t] + eps[t]
     return X
 
-def simulate_lf_block(F, r, p_y, Ly, link, rng):
+def simulate_lf_block(F, r, p_y, Ly, link, rng, cov_scale=1.0):
     T, _ = F.shape
     idx_q = np.arange(r-1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
-    gF = link(F)                               
+    gF = link(F)
     d_g = gF.shape[1]
     C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
     D = rng.uniform(-0.6, 0.6, size=(p_y, d_g))
-    Sigma = 0.5 * np.eye(p_y)
+    Sigma = cov_scale * 0.5 * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
     eps = rng.multivariate_normal(np.zeros(p_y), Sigma, size=len(idx_q))
@@ -138,11 +152,31 @@ if __name__ == "__main__":
     quarterly_vars = [f"Y{j+1}" for j in range(p_y)]
 
     # --- Simulate on the monthly clock ---
+    cov_scale_x = getattr(config.simulation, "cov_scale_x", 1.0)
+    cov_scale_y = getattr(config.simulation, "cov_scale_y", 1.0)
+    noise_x = getattr(config.simulation, "noise_x", "gaussian")
+
     rng = np.random.RandomState(seed)
     F, _ = simulate_latent_VAR2(T_months, q, seed=seed, burn_in=300)
     link = make_link(nonlinear, q=q, out_dim=q, rng=rng)
-    X = simulate_hf_block(F, p_x=p_x, Lx=Lx, link=link, rng=rng)         # [T_M, p_x]
-    idx_q, Y = simulate_lf_block(F, r=r, p_y=p_y, Ly=Ly, link=link, rng=rng)  # [T_Q, p_y]
+    X = simulate_hf_block(
+        F,
+        p_x=p_x,
+        Lx=Lx,
+        link=link,
+        rng=rng,
+        noise_kind=noise_x,
+        cov_scale=cov_scale_x,
+    )         # [T_M, p_x]
+    idx_q, Y = simulate_lf_block(
+        F,
+        r=r,
+        p_y=p_y,
+        Ly=Ly,
+        link=link,
+        rng=rng,
+        cov_scale=cov_scale_y,
+    )  # [T_Q, p_y]
 
     # --- Build integer indices and assemble long format ---
     idx_M, idx_Q = build_int_indices(T_M=X.shape[0], idx_q=idx_q)
