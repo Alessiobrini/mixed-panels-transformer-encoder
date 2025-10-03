@@ -297,8 +297,7 @@ if __name__ == "__main__":
         output_std_match=nonlinear_std_match,
     )
 
-    total_steps = T_months + burn_in
-    F_full, _ = simulate_latent_VAR2(total_steps, q, rng=rng, burn_in=burn_in)
+    F_full, _ = simulate_latent_VAR2(T_months, q, rng=rng, burn_in=burn_in)
     gF_full = link(F_full)
 
     noise_x_distribution = getattr(config.simulation, "noise_x_distribution", "student_t")
@@ -329,10 +328,9 @@ if __name__ == "__main__":
     )  # [T_Q_full, p_y]
 
     # Discard burn-in observations across all simulated series
-    X = X_full[burn_in:]
-    mask_q = idx_q_full >= burn_in
-    idx_q = idx_q_full[mask_q] - burn_in
-    Y = Y_full[mask_q]
+    X = X_full
+    idx_q = idx_q_full
+    Y = Y_full
 
     # --- Build integer indices and assemble long format ---
     idx_M, idx_Q = build_int_indices(T_M=X.shape[0], idx_q=idx_q)
