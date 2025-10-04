@@ -147,6 +147,7 @@ def simulate_hf_block(
     q_fx,
     noise_kind="student_t",
     cov_scale=1.0,
+    noise_rescale=1.0,
     student_df=8,
     gF=None,
 ):
@@ -169,6 +170,7 @@ def simulate_hf_block(
         eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
     else:
         raise ValueError(f"Unsupported noise kind for X block: {noise_kind}")
+    eps *= noise_rescale
     for t in range(Lx, T):
         ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
         factor_terms = sum(
@@ -179,7 +181,18 @@ def simulate_hf_block(
         X[t] = ar + factor_terms + eps[t]
     return X
 
-def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0, gF=None):
+def simulate_lf_block(
+    F,
+    r,
+    p_y,
+    Ly,
+    link,
+    rng,
+    q_fy,
+    cov_scale=1.0,
+    noise_rescale=1.0,
+    gF=None,
+):
     T, _ = F.shape
     idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
     if gF is None:
@@ -194,6 +207,7 @@ def simulate_lf_block(F, r, p_y, Ly, link, rng, q_fy, cov_scale=1.0, gF=None):
 
     Y = np.zeros((len(idx_q), p_y))
     eps = rng.multivariate_normal(np.zeros(p_y), Sigma, size=len(idx_q))
+    eps *= noise_rescale
     for i, t in enumerate(idx_q):
         # Convert quarterly index to the corresponding monthly step (zero-based)
         expected_idx = (i + 1) * r - 1
@@ -303,6 +317,8 @@ if __name__ == "__main__":
     noise_x_distribution = getattr(config.simulation, "noise_x_distribution", "student_t")
     cov_scale_x = getattr(config.simulation, "cov_scale_x", 1.0)
     cov_scale_y = getattr(config.simulation, "cov_scale_y", 1.0)
+    noise_rescale_x = getattr(config.simulation, "noise_rescale_x", 1.0)
+    noise_rescale_y = getattr(config.simulation, "noise_rescale_y", 1.0)
 
     X_full = simulate_hf_block(
         F_full,
@@ -313,6 +329,7 @@ if __name__ == "__main__":
         q_fx=q_fx,
         noise_kind=noise_x_distribution,
         cov_scale=cov_scale_x,
+        noise_rescale=noise_rescale_x,
         gF=gF_full,
     )         # [T_total, p_x]
     idx_q_full, Y_full = simulate_lf_block(
@@ -324,6 +341,7 @@ if __name__ == "__main__":
         rng=rng,
         q_fy=q_fy,
         cov_scale=cov_scale_y,
+        noise_rescale=noise_rescale_y,
         gF=gF_full,
     )  # [T_Q_full, p_y]
 
