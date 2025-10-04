@@ -169,8 +169,9 @@ def simulate_hf_block(
         eps = rng.multivariate_normal(np.zeros(p_x), Sigma, size=T)
     else:
         raise ValueError(f"Unsupported noise kind for X block: {noise_kind}")
-    for t in range(Lx, T):
-        ar = sum(A[l] @ X[t - (l + 1)] for l in range(Lx))
+    for t in range(T):
+        max_l = min(Lx, t)
+        ar = sum(A[l] @ X[t - (l + 1)] for l in range(max_l))
         factor_terms = sum(
             Lambda_fx[lag] @ gF[t - lag]
             for lag in range(q_fx + 1)

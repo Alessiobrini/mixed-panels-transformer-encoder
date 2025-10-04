@@ -23,8 +23,8 @@ simulation:
   Lx: 1               # AR order for X
   Ly: 1               # AR order for Y
   factor_lags:
-    q_fx: 0           # number of latent factor lags for monthly block
-    q_fy: 0           # number of latent factor lags for quarterly block
+    q_fx: 4          # number of latent factor lags for monthly block
+    q_fy: 4           # number of latent factor lags for quarterly block
   p_x: 12              # number of monthly vars -> X1..X8
   p_y: 4              # number of quarterly vars -> Y1
 
