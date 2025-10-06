@@ -98,7 +98,21 @@ def prepare_data(csv_path, config):
 
 
 
-def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train_loader=None, d_freq=None, d_var=None, dim_feedforward=2048, activation="relu"):
+def build_model(
+    full_dataset,
+    config,
+    d_model,
+    nhead,
+    num_layers,
+    dropout,
+    train_loader=None,
+    d_freq=None,
+    d_var=None,
+    dim_feedforward=2048,
+    activation="relu",
+    use_nonlinearity=True,
+    use_attention=True,
+):
     if train_loader is None:
         train_loader = DataLoader(
             torch.utils.data.Subset(full_dataset, list(range(int(config.data.train_ratio * len(full_dataset))))),
@@ -112,10 +126,15 @@ def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train
     tv = len(full_dataset.var_map)
     tf = len(full_dataset.freq_map)
     
-    d_freq = emb_dim(tf, override=d_freq if d_freq is not None else getattr(config.model.transformer, 'd_freq', None))
-    d_var  = emb_dim(tv, override=d_var if d_var is not None else getattr(config.model.transformer, 'd_var', None))
+    transformer_cfg = getattr(config.model, "transformer", None)
 
-    
+    default_d_freq = None if transformer_cfg is None else getattr(transformer_cfg, "d_freq", None)
+    default_d_var = None if transformer_cfg is None else getattr(transformer_cfg, "d_var", None)
+
+    d_freq = emb_dim(tf, override=d_freq if d_freq is not None else default_d_freq)
+    d_var  = emb_dim(tv, override=d_var if d_var is not None else default_d_var)
+
+
     return MixedFrequencyTransformer(
         freq_vocab_size=tf,
         var_vocab_size=tv,
@@ -127,7 +146,9 @@ def build_model(full_dataset, config, d_model, nhead, num_layers, dropout, train
         num_layers=num_layers,
         dropout=dropout,
         dim_feedforward=dim_feedforward,
-        activation=activation
+        activation=activation,
+        use_nonlinearity=use_nonlinearity,
+        use_attention=use_attention,
     )
 
 
@@ -184,6 +205,12 @@ def objective(trial, config, csv_path, exp_path, suffix):
     tv = len(full_dataset.var_map)
     tf = len(full_dataset.freq_map)
 
+    transformer_cfg = getattr(config.model, "transformer", None)
+    default_d_freq = None if transformer_cfg is None else getattr(transformer_cfg, "d_freq", None)
+    default_d_var = None if transformer_cfg is None else getattr(transformer_cfg, "d_var", None)
+    default_use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
+    default_use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
+
     # d_model (required for valid nhead)
     if hasattr(config.hyperopt, 'd_model'):
         d_model = trial.suggest_categorical('d_model', config.hyperopt.d_model)
@@ -221,12 +248,12 @@ def objective(trial, config, csv_path, exp_path, suffix):
         'd_freq': (
             trial.suggest_categorical('d_freq', [int(x) for x in config.hyperopt.d_freq])
             if hasattr(config.hyperopt, 'd_freq')
-            else getattr(config.model.transformer, 'd_freq', emb_dim(tf))
+            else (default_d_freq if default_d_freq is not None else emb_dim(tf))
         ),
         'd_var': (
             trial.suggest_categorical('d_var', [int(x) for x in config.hyperopt.d_var])
             if hasattr(config.hyperopt, 'd_var')
-            else getattr(config.model.transformer, 'd_var', emb_dim(tv))
+            else (default_d_var if default_d_var is not None else emb_dim(tv))
         ),
         'dim_feedforward': (
             trial.suggest_categorical('dim_feedforward', [int(x) for x in config.hyperopt.dim_feedforward])
@@ -256,7 +283,9 @@ def objective(trial, config, csv_path, exp_path, suffix):
         d_freq=params['d_freq'],
         d_var=params['d_var'],
         dim_feedforward=params['dim_feedforward'],
-        activation=params['activation']
+        activation=params['activation'],
+        use_nonlinearity=default_use_nonlinearity,
+        use_attention=default_use_attention,
     )
     model.to(device)
 
@@ -315,6 +344,10 @@ def objective(trial, config, csv_path, exp_path, suffix):
 def run_standard_training(config, csv_path, exp_path, suffix):
     full_dataset, train_loader, test_loader, test_indices = prepare_data(csv_path, config)
 
+    transformer_cfg = getattr(config.model, "transformer", None)
+    default_use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
+    default_use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
+
     model = build_model(
         full_dataset, config,
         config.model.transformer.d_model,
@@ -322,7 +355,9 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         config.model.transformer.num_layers,
         config.model.transformer.dropout,
         dim_feedforward=config.model.transformer.dim_feedforward,
-        activation=config.model.transformer.activation
+        activation=config.model.transformer.activation,
+        use_nonlinearity=default_use_nonlinearity,
+        use_attention=default_use_attention,
     )
     model.to(device)
     criterion = nn.MSELoss()
@@ -408,14 +443,20 @@ def run_optuna(config, csv_path, exp_path, suffix):
     tv = len(full_dataset.var_map)
     tf = len(full_dataset.freq_map)
 
+    transformer_cfg = getattr(config.model, "transformer", None)
+    default_d_freq = None if transformer_cfg is None else getattr(transformer_cfg, "d_freq", None)
+    default_d_var = None if transformer_cfg is None else getattr(transformer_cfg, "d_var", None)
+    default_use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
+    default_use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
+
     complete_params = {
         'd_model': best_params.get('d_model', config.model.transformer.d_model),
         'nhead': best_params.get('nhead', config.model.transformer.nhead),
         'num_layers': best_params.get('num_layers', config.model.transformer.num_layers),
         'dropout': best_params.get('dropout', config.model.transformer.dropout),
         'lr': best_params.get('lr', config.training.lr),
-        'd_freq': best_params.get('d_freq', getattr(config.model.transformer, 'd_freq', emb_dim(tf))),
-        'd_var': best_params.get('d_var', getattr(config.model.transformer, 'd_var', emb_dim(tv))),
+        'd_freq': best_params.get('d_freq', default_d_freq if default_d_freq is not None else emb_dim(tf)),
+        'd_var': best_params.get('d_var', default_d_var if default_d_var is not None else emb_dim(tv)),
         'dim_feedforward': best_params.get('dim_feedforward', 2048),
         'activation': best_params.get('activation', 'relu'),
 
@@ -429,7 +470,9 @@ def run_optuna(config, csv_path, exp_path, suffix):
         d_freq=complete_params['d_freq'],
         d_var=complete_params['d_var'],
         dim_feedforward=complete_params['dim_feedforward'],
-        activation=complete_params['activation']
+        activation=complete_params['activation'],
+        use_nonlinearity=default_use_nonlinearity,
+        use_attention=default_use_attention,
     )
 
     best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
