@@ -20,6 +20,13 @@ config <- yaml::read_yaml("src/config/cfg.yaml")
 
 # --- Count all variables present based on the active data branch ---
 use_sim <- isTRUE(config$simulation$simulate)
+use_quarterly_only <- FALSE
+if (use_sim) {
+  flag <- config$simulation$use_y_only_predictors
+  if (!is.null(flag)) {
+    use_quarterly_only <- isTRUE(flag)
+  }
+}
 
 if (use_sim) {
   px <- config$simulation$p_x
@@ -35,6 +42,9 @@ if (use_sim) {
   monthly_vars   <- if (px > 0) sprintf("X%d", seq_len(px)) else character(0)
   quarterly_vars <- if (py > 0) sprintf("Y%d", seq_len(py)) else character(0)
   target_var     <- config$features$target
+  if (length(monthly_vars) == 0) {
+    use_quarterly_only <- TRUE
+  }
   n_monthly      <- length(monthly_vars)
   n_quarterly    <- length(quarterly_vars)
   data_template  <- config$paths$data_processed_template_simulation
@@ -69,18 +79,28 @@ output_file <- as.character(glue(config$paths$outputs$midas_preds, suffix = suff
 # 1) Load & prep data
 df <- read_csv(data_path, show_col_types = FALSE)
 
-monthly <- df %>%
-  filter(Variable %in% monthly_vars) %>%
-  mutate(Timestamp = floor_date(Timestamp, "month")) %>%
-  group_by(Variable) %>%
-  complete(Timestamp = seq(min(Timestamp), max(Timestamp), by = "month")) %>%
-  fill(Value) %>%
-  ungroup() %>%
-  pivot_wider(names_from = Variable, values_from = Value) %>%
-  arrange(Timestamp)
+predictor_monthly_vars <- monthly_vars
+if (use_quarterly_only) {
+  predictor_monthly_vars <- character(0)
+}
 
-# Only keep available variables after pivoting
-available_vars <- intersect(monthly_vars, names(monthly))
+if (length(predictor_monthly_vars) > 0) {
+  monthly <- df %>%
+    filter(Variable %in% predictor_monthly_vars) %>%
+    mutate(Timestamp = floor_date(Timestamp, "month")) %>%
+    group_by(Variable) %>%
+    complete(Timestamp = seq(min(Timestamp), max(Timestamp), by = "month")) %>%
+    fill(Value) %>%
+    ungroup() %>%
+    pivot_wider(names_from = Variable, values_from = Value) %>%
+    arrange(Timestamp)
+
+  # Only keep available variables after pivoting
+  available_vars <- intersect(predictor_monthly_vars, names(monthly))
+} else {
+  monthly <- data.frame()
+  available_vars <- character(0)
+}
 
 # Prepare full quarterly df
 quarterly <- df %>%
@@ -142,8 +162,16 @@ if (use_y_lags && ar_lags > 0) {
 # Always add MIDAS terms
 terms <- c(terms, lapply(available_vars, function(v) call("mlsd", as.name(v), lags, quote(y_train))))
 
+rhs <- NULL
+if (length(terms) == 0) {
+  rhs <- quote(1)
+} else if (length(terms) == 1) {
+  rhs <- terms[[1]]
+} else {
+  rhs <- Reduce(function(x, y) call("+", x, y), terms)
+}
 
-formula <- as.call(c(as.name("~"), quote(y_train), Reduce(function(x, y) call("+", x, y), terms)))
+formula <- as.call(c(as.name("~"), quote(y_train), rhs))
 formula <- eval(formula)  # Evaluate the call into an actual formula object
 environment(formula) <- environment()
 
