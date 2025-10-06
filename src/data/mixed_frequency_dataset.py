@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Union, Dict, List
 from sklearn.preprocessing import StandardScaler
+from pandas.api.types import is_datetime64_any_dtype
 import pdb
 
 class MixedFrequencyDataset(Dataset):
@@ -44,8 +45,26 @@ class MixedFrequencyDataset(Dataset):
         self.target_variable = target_variable
         self.context_days = context_days
 
-        # Time IDs: integer day from start
-        self.df["time_id"] = (self.df[time_column] - self.df[time_column].min()).dt.days
+        # Time IDs: integer offset from earliest timestamp / identifier
+        time_series = self.df[time_column]
+
+        if is_datetime64_any_dtype(time_series):
+            time_delta = time_series - time_series.min()
+            self.df["time_id"] = (time_delta / pd.Timedelta(days=1)).astype(int)
+        else:
+            numeric_time = pd.to_numeric(time_series, errors="coerce")
+            if numeric_time.isna().any():
+                raise ValueError(
+                    "Time column must be convertible to datetime or numeric values to build time ids."
+                )
+            time_offsets = numeric_time - numeric_time.min()
+            if not np.allclose(time_offsets, np.round(time_offsets)):
+                raise ValueError(
+                    "Numeric time column must contain integer-like values to derive time ids."
+                )
+            time_offsets = np.round(time_offsets).astype(int)
+            self.df[time_column] = numeric_time
+            self.df["time_id"] = time_offsets
         self.time_ids = self.df["time_id"].values
 
         # Embedding maps
