@@ -22,9 +22,19 @@ class MixedFrequencyDataset(Dataset):
         variable_column: str = "Variable",
         freq_column: str = "Frequency",
         value_column: str = "Value",
-        target_variable: str = "Y"
+        target_variable: str = "Y",
+        allowed_variables: Union[None, List[str], set] = None,
+        allowed_frequencies: Union[None, List[str], set] = None,
     ):
         self.df = pd.read_csv(csv_path, parse_dates=[time_column])
+
+        if allowed_variables is not None:
+            allowed_variables = set(allowed_variables)
+            self.df = self.df[self.df[variable_column].isin(allowed_variables)].reset_index(drop=True)
+
+        if allowed_frequencies is not None:
+            allowed_frequencies = set(allowed_frequencies)
+            self.df = self.df[self.df[freq_column].isin(allowed_frequencies)].reset_index(drop=True)
 
 
         self.time_column = time_column

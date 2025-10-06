@@ -24,6 +24,24 @@ def is_simulation_enabled(config) -> bool:
     return bool(getattr(sim_cfg, "simulate", False))
 
 
+def use_quarterly_only_predictors(config) -> bool:
+    """Return ``True`` if simulation should ignore monthly predictors."""
+
+    if not is_simulation_enabled(config):
+        return False
+
+    sim_cfg = getattr(config, "simulation", None)
+    if sim_cfg is None:
+        return False
+
+    flag = getattr(sim_cfg, "use_y_only_predictors", None)
+    if flag is not None:
+        return bool(flag)
+
+    n_monthly, _ = _resolve_sim_counts(config)
+    return n_monthly == 0
+
+
 def _coalesce(*values):
     for value in values:
         if value is None:
