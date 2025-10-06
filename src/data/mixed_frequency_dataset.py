@@ -44,7 +44,7 @@ class MixedFrequencyDataset(Dataset):
         self.value_column = value_column
         self.target_variable = target_variable
         self.requested_context_days = context_days
-
+        
         # Time IDs: integer offset from earliest timestamp / identifier
         time_series = self.df[time_column]
 
@@ -68,6 +68,7 @@ class MixedFrequencyDataset(Dataset):
             self.df["time_id"] = time_offsets
             self.uses_calendar_days = False
         self.time_ids = self.df["time_id"].values
+        
         self.context_days = self._resolve_context_days(self.requested_context_days)
 
         # Embedding maps
@@ -158,16 +159,7 @@ class MixedFrequencyDataset(Dataset):
             if context_start < 0:
                 self.skipped_context += 1
                 continue  # Not enough history to build context
-    
-            # Extract context window
-            # context_df = self.df[
-            #     (self.df["time_id"] >= context_start) & 
-            #     (self.df["time_id"] <= context_end)
-            # ]
 
-            # if context_df.empty:
-            #     self.skipped_context += 1
-            #     continue  # Skip if context has no data
             context_idx = self.df.index[
                 (self.df["time_id"] >= context_start) & (self.df["time_id"] <= context_end)
             ]
@@ -177,8 +169,6 @@ class MixedFrequencyDataset(Dataset):
  
             result.append({
                 "context_idx": context_idx.to_numpy(),
-                # "context": context_df,
-                # "target_value": float(row["scaled_value"]),
                 "target_idx": int(row.name)
 
             })
