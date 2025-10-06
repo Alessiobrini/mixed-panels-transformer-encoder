@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from dieboldmariano import dm_test
 from src.utils.config import Config
+from src.utils.data_paths import get_output_path, resolve_data_paths
 import pdb
 import shutil
 
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     config = Config(cfg_path)
     
     # Determine suffix
-    suffix = f"{len(config.features.monthly_vars)}M_{len(config.features.quarterly_vars)}Q"
+    _, suffix, _, _ = resolve_data_paths(config, project_root)
     exp_name = getattr(config.training, "experiment_name", None)
     
 
@@ -97,20 +98,20 @@ if __name__ == "__main__":
         exp_path.mkdir(parents=True, exist_ok=True)
     
         for key in config.evaluation.forecast_files:
-            rel_path = getattr(config.paths.outputs, key).format(suffix=suffix)
-            src_path = project_root / rel_path
-    
+            src_path = get_output_path(config, project_root, key, suffix)
+
             # Only copy AR and MIDAS predictions; transformer already lives there
             if key != "transformer_preds":
-                dst_path = exp_path / Path(rel_path).name
+                dst_path = exp_path / src_path.name
                 shutil.copy(src_path, dst_path)
     
     # Build list of forecast-CSV paths
     forecast_dir = exp_path if exp_name else project_root / "outputs"
-    FORECAST_PATHS = [
-        forecast_dir / getattr(config.paths.outputs, key).format(suffix=suffix).split("/")[-1]
+    forecast_filenames = [
+        Path(getattr(config.paths.outputs, key).format(suffix=suffix)).name
         for key in config.evaluation.forecast_files
     ]
+    FORECAST_PATHS = [forecast_dir / name for name in forecast_filenames]
 
     
     TRUE_COL = config.evaluation.true_col

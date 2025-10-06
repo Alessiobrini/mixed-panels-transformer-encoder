@@ -22,6 +22,7 @@ from src.data.utils import collate_batch
 from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.utils.config import Config
+from src.utils.data_paths import resolve_data_paths
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -480,16 +481,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    raw_md_path = project_root / config.paths.data_raw_fred_monthly
-    md_cols = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
-    if config.features.all_monthly:
-        n_monthly = len([c for c in md_cols if c != 'date'])
-        n_quarterly = len(config.features.quarterly_vars)
-    else:
-        n_monthly = len(config.features.monthly_vars)
-        n_quarterly = len(config.features.quarterly_vars)
-    suffix = f"{n_monthly}M_{n_quarterly}Q"
-    csv_path = project_root / config.paths.data_processed_template.format(suffix=suffix)
+    csv_path, suffix, _, _ = resolve_data_paths(config, project_root)
 
     mode = 'optuna' if config.training.optimize else 'run'
     if config.training.experiment_name:

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from src.utils.config import Config
+from src.utils.data_paths import get_output_path, resolve_data_paths
 
 # ------------------------
 # Setup project root & load config
@@ -15,22 +16,8 @@ from src.utils.config import Config
 cfg_path = project_root / "src" / "config" / "cfg.yaml"
 config = Config(cfg_path)
 
-raw_md_path   = project_root / config.paths.data_raw_fred_monthly
-md_cols       = pd.read_csv(raw_md_path, nrows=0).columns.tolist()
-if config.features.all_monthly:
-    monthly_vars = [c for c in md_cols if c != 'date']
-    target_var   = config.features.target
-    quarterly_vars = [target_var]  # always include target as quarterly
-    # if target_var in monthly_vars:
-    #     monthly_vars.remove(target_var)
-else:
-    monthly_vars   = config.features.monthly_vars
-    quarterly_vars = config.features.quarterly_vars
-suffix = f"{len(monthly_vars)}M_{len(quarterly_vars)}Q"
-
-# Paths driven by suffix
-DATA_PATH   = project_root / config.paths.data_processed_template.format(suffix=suffix)
-OUTPUT_FILE = project_root / config.paths.outputs.ar_preds.format(suffix=suffix)
+DATA_PATH, suffix, _, _ = resolve_data_paths(config, project_root)
+OUTPUT_FILE = get_output_path(config, project_root, "ar_preds", suffix)
 
 TARGET_VAR  = config.features.target
 TRAIN_SPLIT = config.data.train_ratio

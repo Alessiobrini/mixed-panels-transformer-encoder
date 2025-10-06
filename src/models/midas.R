@@ -18,31 +18,52 @@ if (Sys.info()[["sysname"]] == "Windows") {
 # —— Config & Load data ——
 config <- yaml::read_yaml("src/config/cfg.yaml")
 
-# --- Count all variables present in the raw file, regardless of role ---
-if (isTRUE(config$features$all_monthly)) {
+# --- Count all variables present based on the active data branch ---
+use_sim <- isTRUE(config$simulation$simulate)
+
+if (use_sim) {
+  px <- config$simulation$p_x
+  if (is.null(px)) px <- config$simulation$num_monthly
+  if (is.null(px)) px <- length(config$features$monthly_vars)
+  if (is.null(px)) px <- 0
+
+  py <- config$simulation$p_y
+  if (is.null(py)) py <- config$simulation$num_quarterly
+  if (is.null(py)) py <- length(config$features$quarterly_vars)
+  if (is.null(py)) py <- 1
+
+  monthly_vars   <- if (px > 0) sprintf("X%d", seq_len(px)) else character(0)
+  quarterly_vars <- if (py > 0) sprintf("Y%d", seq_len(py)) else character(0)
+  target_var     <- config$features$target
+  n_monthly      <- length(monthly_vars)
+  n_quarterly    <- length(quarterly_vars)
+  data_template  <- config$paths$data_processed_template_simulation
+} else if (isTRUE(config$features$all_monthly)) {
   raw_monthly_path <- config$paths$data_raw_fred_monthly
   md_header        <- names(read_csv(raw_monthly_path, n_max = 0))
   all_md_vars      <- setdiff(md_header, "date")
-  
+
   target_var    <- config$features$target
   monthly_vars  <- setdiff(all_md_vars, target_var)
   quarterly_vars <- target_var
-  
+
   n_monthly   <- length(all_md_vars)
   n_quarterly <- 1
+  data_template <- config$paths$data_processed_template
 } else {
   monthly_vars   <- config$features$monthly_vars
   quarterly_vars <- config$features$quarterly_vars
   target_var     <- config$features$target
   n_monthly      <- length(monthly_vars)
   n_quarterly    <- length(quarterly_vars)
+  data_template  <- config$paths$data_processed_template
 }
 
 suffix <- paste0(n_monthly, "M_", n_quarterly, "Q")
 lags   <- config$model$midas$lags
 
 # Fix filepaths from template
-data_path   <- as.character(glue(config$paths$data_processed_template, suffix = suffix))
+data_path   <- as.character(glue(data_template, suffix = suffix))
 output_file <- as.character(glue(config$paths$outputs$midas_preds, suffix = suffix))
 
 # 1) Load & prep data
