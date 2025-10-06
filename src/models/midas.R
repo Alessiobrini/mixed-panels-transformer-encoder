@@ -18,6 +18,29 @@ if (Sys.info()[["sysname"]] == "Windows") {
 # —— Config & Load data ——
 config <- yaml::read_yaml("src/config/cfg.yaml")
 
+resolve_target <- function(config, default = "Y1") {
+  feature_target <- config$features$target
+
+  if (isTRUE(config$simulation$simulate)) {
+    sim_target <- config$simulation$target
+    if (!is.null(sim_target) && nzchar(sim_target)) {
+      return(sim_target)
+    }
+    if (!is.null(feature_target) && nzchar(feature_target)) {
+      return(feature_target)
+    }
+    return(default)
+  }
+
+  if (is.null(feature_target) || !nzchar(feature_target)) {
+    stop("features$target must be set when simulation is disabled.")
+  }
+
+  feature_target
+}
+
+target_var <- resolve_target(config)
+
 # --- Count all variables present based on the active data branch ---
 use_sim <- isTRUE(config$simulation$simulate)
 use_quarterly_only <- FALSE
@@ -41,7 +64,6 @@ if (use_sim) {
 
   monthly_vars   <- if (px > 0) sprintf("X%d", seq_len(px)) else character(0)
   quarterly_vars <- if (py > 0) sprintf("Y%d", seq_len(py)) else character(0)
-  target_var     <- config$features$target
   if (length(monthly_vars) == 0) {
     use_quarterly_only <- TRUE
   }
@@ -53,7 +75,6 @@ if (use_sim) {
   md_header        <- names(read_csv(raw_monthly_path, n_max = 0))
   all_md_vars      <- setdiff(md_header, "date")
 
-  target_var    <- config$features$target
   monthly_vars  <- setdiff(all_md_vars, target_var)
   quarterly_vars <- target_var
 
@@ -63,7 +84,6 @@ if (use_sim) {
 } else {
   monthly_vars   <- config$features$monthly_vars
   quarterly_vars <- config$features$quarterly_vars
-  target_var     <- config$features$target
   n_monthly      <- length(monthly_vars)
   n_quarterly    <- length(quarterly_vars)
   data_template  <- config$paths$data_processed_template
@@ -109,7 +129,6 @@ quarterly <- df %>%
   arrange(Variable, Timestamp)
 
 # Then isolate the actual target variable series
-target_var <- config$features$target
 target_df <- quarterly %>% filter(Variable == target_var)
 
 

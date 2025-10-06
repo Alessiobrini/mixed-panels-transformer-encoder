@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from src.utils.data_paths import is_simulation_enabled, use_quarterly_only_predictors
+from src.utils.data_paths import (
+    is_simulation_enabled,
+    resolve_target_variable,
+    use_quarterly_only_predictors,
+)
 
 
 def build_config(simulation=None, features=None):
@@ -76,3 +80,35 @@ def test_use_quarterly_only_predictors_false_when_monthly_present():
         },
     )
     assert use_quarterly_only_predictors(config) is False
+
+
+def test_resolve_target_variable_real_data():
+    config = build_config(
+        simulation={"simulate": False},
+        features={"target": "GDP"},
+    )
+    assert resolve_target_variable(config) == "GDP"
+
+
+def test_resolve_target_variable_simulation_explicit():
+    config = build_config(
+        simulation={"simulate": True, "target": "Y3"},
+        features={"target": "GDP"},
+    )
+    assert resolve_target_variable(config) == "Y3"
+
+
+def test_resolve_target_variable_simulation_fallback_to_features():
+    config = build_config(
+        simulation={"simulate": True},
+        features={"target": "Y2"},
+    )
+    assert resolve_target_variable(config) == "Y2"
+
+
+def test_resolve_target_variable_simulation_default():
+    config = build_config(
+        simulation={"simulate": True},
+        features={"target": None},
+    )
+    assert resolve_target_variable(config) == "Y1"

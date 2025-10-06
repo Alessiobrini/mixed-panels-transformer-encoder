@@ -98,7 +98,7 @@ def resolve_variable_lists(config, project_root: Path) -> Tuple[List[str], List[
 
     if getattr(config.features, "all_monthly", False):
         monthly_vars = [c for c in md_cols if c != "date"]
-        quarterly_vars = [config.features.target]
+        quarterly_vars = [resolve_target_variable(config)]
     else:
         monthly_vars = list(config.features.monthly_vars)
         quarterly_vars = list(config.features.quarterly_vars)
@@ -130,3 +130,24 @@ def get_output_path(config, project_root: Path, output_key: str, suffix: str) ->
 
     template = getattr(config.paths.outputs, output_key)
     return project_root / template.format(suffix=suffix)
+
+
+def resolve_target_variable(config) -> str:
+    """Return the name of the target variable for the active configuration."""
+
+    features = getattr(config, "features", None)
+    feature_target = getattr(features, "target", None) if features else None
+
+    if is_simulation_enabled(config):
+        sim_cfg = getattr(config, "simulation", None)
+        target = _coalesce(
+            getattr(sim_cfg, "target", None) if sim_cfg else None,
+            feature_target,
+            "Y1",
+        )
+        return target
+
+    if feature_target is None:
+        raise ValueError("Real-data runs require `features.target` to be set in the config.")
+
+    return feature_target

@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from src.utils.config import Config
-from src.utils.data_paths import get_output_path, resolve_data_paths
+from src.utils.data_paths import (
+    get_output_path,
+    resolve_data_paths,
+    resolve_target_variable,
+)
 
 # ------------------------
 # Setup project root & load config
@@ -19,7 +23,7 @@ config = Config(cfg_path)
 DATA_PATH, suffix, _, _ = resolve_data_paths(config, project_root)
 OUTPUT_FILE = get_output_path(config, project_root, "ar_preds", suffix)
 
-TARGET_VAR  = config.features.target
+TARGET_VAR  = resolve_target_variable(config)
 TRAIN_SPLIT = config.data.train_ratio
 MAX_LAG     = config.model.ar.max_lag
 
