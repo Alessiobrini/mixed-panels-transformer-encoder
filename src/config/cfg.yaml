@@ -114,6 +114,8 @@ model:
     d_var: null        # default: computed via log2
     dim_feedforward: 128
     activation: "relu"
+    use_nonlinearity: true
+    use_attention: true
 
   ar:
     max_lag: 40

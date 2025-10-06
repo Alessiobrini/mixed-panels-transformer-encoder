@@ -1,5 +1,8 @@
+from typing import Callable
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import matplotlib.pyplot as plt
@@ -12,6 +15,81 @@ def get_sinusoidal_encoding(seq_len, d_model):
     pe[:, 0::2] = torch.sin(position * div_term)
     pe[:, 1::2] = torch.cos(position * div_term)
     return pe
+
+
+def _identity(x: torch.Tensor) -> torch.Tensor:
+    return x
+
+
+def _resolve_activation_fn(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
+    name = name.lower()
+    if name == "relu":
+        return F.relu
+    if name == "gelu":
+        return F.gelu
+    if name == "tanh":
+        return torch.tanh
+    raise ValueError(f"Unsupported activation '{name}'")
+
+
+class FeedForwardBlock(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        dim_feedforward: int,
+        dropout: float,
+        activation_fn: Callable[[torch.Tensor], torch.Tensor],
+        use_nonlinearity: bool,
+    ):
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model)
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.activation_fn = activation_fn
+        self.use_nonlinearity = use_nonlinearity
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = self.norm(x)
+        out = self.linear1(out)
+        if self.use_nonlinearity:
+            out = self.activation_fn(out)
+        out = self.dropout1(out)
+        out = self.linear2(out)
+        out = self.dropout2(out)
+        return residual + out
+
+
+class FeedForwardStack(nn.Module):
+    def __init__(
+        self,
+        num_layers: int,
+        d_model: int,
+        dim_feedforward: int,
+        dropout: float,
+        activation_fn: Callable[[torch.Tensor], torch.Tensor],
+        use_nonlinearity: bool,
+    ):
+        super().__init__()
+        self.layers = nn.ModuleList(
+            [
+                FeedForwardBlock(
+                    d_model=d_model,
+                    dim_feedforward=dim_feedforward,
+                    dropout=dropout,
+                    activation_fn=activation_fn,
+                    use_nonlinearity=use_nonlinearity,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for block in self.layers:
+            x = block(x)
+        return x
 
 
 class MixedFrequencyTransformer(nn.Module):
@@ -27,11 +105,14 @@ class MixedFrequencyTransformer(nn.Module):
         dropout: float = 0.1,
         max_len: int = 512,
         dim_feedforward: int = 2048,
-        activation: str = "relu"
+        activation: str = "relu",
+        use_nonlinearity: bool = True,
+        use_attention: bool = True,
     ):
         super().__init__()
         self.d_input = 1 + d_freq + d_var
         self.d_model = d_model
+        self.use_attention = use_attention
 
         # Learnable embeddings
         self.freq_embedding = nn.Embedding(freq_vocab_size, d_freq)
@@ -45,16 +126,29 @@ class MixedFrequencyTransformer(nn.Module):
         self.register_buffer("positional_encoding", pe)
 
         # Transformer encoder
-        encoder_layer = TransformerEncoderLayer(
-                                                d_model=d_model,
-                                                nhead=nhead,
-                                                dim_feedforward=dim_feedforward,
-                                                dropout=dropout,
-                                                activation=activation,
-                                                batch_first=True
-                                            )
+        activation_fn = _resolve_activation_fn(activation)
+        encoder_activation = activation_fn if use_nonlinearity else _identity
 
-        self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
+        if use_attention:
+            encoder_layer = TransformerEncoderLayer(
+                                                    d_model=d_model,
+                                                    nhead=nhead,
+                                                    dim_feedforward=dim_feedforward,
+                                                    dropout=dropout,
+                                                    activation=encoder_activation,
+                                                    batch_first=True
+                                                )
+
+            self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
+        else:
+            self.transformer_encoder = FeedForwardStack(
+                num_layers=num_layers,
+                d_model=d_model,
+                dim_feedforward=dim_feedforward,
+                dropout=dropout,
+                activation_fn=activation_fn,
+                use_nonlinearity=use_nonlinearity,
+            )
 
         # Prediction head
         self.prediction_head = nn.Linear(d_model, 1)
