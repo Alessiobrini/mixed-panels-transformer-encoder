@@ -30,6 +30,7 @@ simulation:
   noise_rescale_x: 1.0   # global multiplier for monthly noise shocks
   noise_rescale_y: 1.0   # global multiplier for quarterly noise shocks
   use_y_only_predictors: true
+  target: Y1
 
 features:
   target:         UNRATE

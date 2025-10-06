@@ -22,7 +22,11 @@ from src.data.utils import collate_batch
 from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.utils.config import Config
-from src.utils.data_paths import resolve_data_paths, use_quarterly_only_predictors
+from src.utils.data_paths import (
+    resolve_data_paths,
+    resolve_target_variable,
+    use_quarterly_only_predictors,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -69,10 +73,12 @@ def compute_split_indices(n, train_ratio, val_ratio=0.0, optimize=False):
 def prepare_data(csv_path, config):
     allowed_freqs = {"Q"} if use_quarterly_only_predictors(config) else None
 
+    target_variable = resolve_target_variable(config)
+
     full_dataset = MixedFrequencyDataset(
         csv_path,
         context_days=config.data.context_days,
-        target_variable=config.features.target,
+        target_variable=target_variable,
         allowed_frequencies=allowed_freqs,
     )
     n = len(full_dataset)
