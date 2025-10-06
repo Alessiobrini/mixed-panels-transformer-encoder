@@ -100,8 +100,6 @@ def prepare_data(csv_path, config):
         return full_dataset, train_loader, test_loader, test_idx
     
 
-
-
 def build_model(
     full_dataset,
     config,
@@ -129,11 +127,16 @@ def build_model(
 
     tv = len(full_dataset.var_map)
     tf = len(full_dataset.freq_map)
-    
+
     transformer_cfg = getattr(config.model, "transformer", None)
 
     default_d_freq = None if transformer_cfg is None else getattr(transformer_cfg, "d_freq", None)
     default_d_var = None if transformer_cfg is None else getattr(transformer_cfg, "d_var", None)
+    use_positional_encoding = True
+    if transformer_cfg is not None:
+        use_positional_encoding = getattr(
+            transformer_cfg, "use_positional_encoding", True
+        )
 
     d_freq = emb_dim(tf, override=d_freq if d_freq is not None else default_d_freq)
     d_var  = emb_dim(tv, override=d_var if d_var is not None else default_d_var)
@@ -153,6 +156,7 @@ def build_model(
         activation=activation,
         use_nonlinearity=use_nonlinearity,
         use_attention=use_attention,
+        use_positional_encoding=use_positional_encoding,
     )
 
 

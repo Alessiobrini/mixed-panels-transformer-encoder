@@ -117,6 +117,7 @@ model:
     activation: "relu"
     use_nonlinearity: true
     use_attention: true
+    use_positional_encoding: true
 
   ar:
     max_lag: 40
