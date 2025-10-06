@@ -108,11 +108,14 @@ class MixedFrequencyTransformer(nn.Module):
         activation: str = "relu",
         use_nonlinearity: bool = True,
         use_attention: bool = True,
+        use_positional_encoding: bool = True,
     ):
         super().__init__()
         self.d_input = 1 + d_freq + d_var
         self.d_model = d_model
         self.use_attention = use_attention
+        self.max_len = max_len
+        self.positional_encoding_enabled = use_positional_encoding
 
         # Learnable embeddings
         self.freq_embedding = nn.Embedding(freq_vocab_size, d_freq)
@@ -121,9 +124,11 @@ class MixedFrequencyTransformer(nn.Module):
         # Input projection
         self.input_proj = nn.Linear(self.d_input, d_model)
 
-        # Sinusoidal positional encoding (fixed)
-        pe = get_sinusoidal_encoding(max_len, d_model)
-        self.register_buffer("positional_encoding", pe)
+        if self.positional_encoding_enabled:
+            pe = get_sinusoidal_encoding(max_len, d_model)
+            self.register_buffer("positional_encoding", pe)
+        else:
+            self.register_buffer("positional_encoding", None)
 
         # Transformer encoder
         activation_fn = _resolve_activation_fn(activation)
@@ -174,19 +179,31 @@ class MixedFrequencyTransformer(nn.Module):
         z = torch.cat([value_unsqueezed, var_emb, freq_emb], dim=-1)  # [B, T, d_input]
         z_proj = self.input_proj(z)                                   # [B, T, d_model]
 
-        # Add positional encoding
-        pos_enc = self.positional_encoding[:z_proj.size(1), :].unsqueeze(0)  # [1, T, d_model]
-        
-        # normalize both
         z_proj = self.z_proj_norm(z_proj)
-        pos_enc = self.pos_enc_norm(pos_enc)
-        # sum
-        z_proj = z_proj + pos_enc
+
+        if self.positional_encoding_enabled:
+            pos_enc = self._get_positional_encoding(z_proj)
+            pos_enc = self.pos_enc_norm(pos_enc)
+            z_proj = z_proj + pos_enc
 
         out = self.transformer_encoder(z_proj)                       # [B, T, d_model]
         pooled = out.mean(dim=1)                                     # [B, d_model]
         pred = self.prediction_head(pooled)                          # [B, 1]
         return pred.squeeze(-1)                                      # [B]
+
+    def _get_positional_encoding(self, x: torch.Tensor) -> torch.Tensor:
+        seq_len = x.size(1)
+        if seq_len > self.max_len:
+            raise ValueError(
+                f"Sequence length {seq_len} exceeds maximum length {self.max_len}"
+            )
+
+        if self.positional_encoding is None:
+            raise RuntimeError(
+                "Positional encoding is disabled but _get_positional_encoding was called"
+            )
+
+        return self.positional_encoding[:seq_len, :].unsqueeze(0)
 
 
 
@@ -221,7 +238,10 @@ if __name__ == "__main__":
 
 
     # Extract and detach positional encodings from the model
-    pos_enc = model.positional_encoding.cpu().detach().numpy()  # [max_len, d_model]
+    if model.positional_encoding is not None:
+        pos_enc = model.positional_encoding.cpu().detach().numpy()  # [max_len, d_model]
+    else:
+        raise RuntimeError("No positional encoding available to visualize")
 
     # Plot heatmap for first N positions and dimensions
     N_pos = 100  # first 100 positions
