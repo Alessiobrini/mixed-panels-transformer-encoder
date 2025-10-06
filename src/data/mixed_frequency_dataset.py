@@ -43,7 +43,7 @@ class MixedFrequencyDataset(Dataset):
         self.freq_column = freq_column
         self.value_column = value_column
         self.target_variable = target_variable
-        self.context_days = context_days
+        self.requested_context_days = context_days
 
         # Time IDs: integer offset from earliest timestamp / identifier
         time_series = self.df[time_column]
@@ -51,6 +51,7 @@ class MixedFrequencyDataset(Dataset):
         if is_datetime64_any_dtype(time_series):
             time_delta = time_series - time_series.min()
             self.df["time_id"] = (time_delta / pd.Timedelta(days=1)).astype(int)
+            self.uses_calendar_days = True
         else:
             numeric_time = pd.to_numeric(time_series, errors="coerce")
             if numeric_time.isna().any():
@@ -65,7 +66,9 @@ class MixedFrequencyDataset(Dataset):
             time_offsets = np.round(time_offsets).astype(int)
             self.df[time_column] = numeric_time
             self.df["time_id"] = time_offsets
+            self.uses_calendar_days = False
         self.time_ids = self.df["time_id"].values
+        self.context_days = self._resolve_context_days(self.requested_context_days)
 
         # Embedding maps
         self.freq_map = {f: i for i, f in enumerate(self.df[freq_column].unique())}
@@ -88,6 +91,41 @@ class MixedFrequencyDataset(Dataset):
         return self.scalers[var_name].inverse_transform(values.reshape(-1, 1)).flatten()
 
 
+    def _resolve_context_days(self, requested_span: int) -> int:
+        """Return an effective context span measured in the dataset's time units."""
+
+        if getattr(self, "uses_calendar_days", False):
+            return max(1, int(round(requested_span)))
+
+        quarter_in_days = 90.0
+
+        target_mask = self.df[self.variable_column] == self.target_variable
+        if self.freq_column in self.df.columns:
+            freq_series = self.df[self.freq_column].astype(str).str.upper()
+            if "Q" in freq_series.unique():
+                target_mask &= freq_series == "Q"
+            else:
+                target_mask &= self.df[self.freq_column].notna()
+
+        target_time_ids = (
+            self.df.loc[target_mask, "time_id"].dropna().astype(int).unique()
+        )
+        if target_time_ids.size < 2:
+            return max(1, int(round(requested_span)))
+
+        target_time_ids.sort()
+        diffs = np.diff(target_time_ids)
+        diffs = diffs[diffs > 0]
+        if diffs.size == 0:
+            return max(1, int(round(requested_span)))
+
+        median_gap = float(np.median(diffs))
+        if np.isclose(median_gap, quarter_in_days, rtol=0.1):
+            return max(1, int(round(requested_span)))
+
+        scaled_context = int(round((requested_span / quarter_in_days) * median_gap))
+        return max(1, scaled_context)
+
     def _build_sequence_targets(self) -> List[Dict]:
         """
         Build context-target pairs where:
@@ -98,28 +136,25 @@ class MixedFrequencyDataset(Dataset):
         result = []
     
         # Identify all rows where the target variable appears (i.e., Y observations)
-        # target_rows = self.df[self.df[self.variable_column] == self.target_variable]
         target_rows = self.df[
                         (self.df[self.variable_column] == self.target_variable) &
                         (self.df[self.freq_column] == 'Q')
                     ]
 
-
         for _, row in target_rows.iterrows():
             target_time_id = row["time_id"]
             context_end = self.df[
-                                (self.df[self.variable_column] == self.target_variable) &
-                                (self.df["time_id"] < target_time_id)
-                            ]["time_id"].max()
-            
+                (self.df[self.variable_column] == self.target_variable)
+                & (self.df["time_id"] < target_time_id)
+            ]["time_id"].max()
+
             if pd.notna(context_end):
                 context_end = int(context_end)
             else:
                 self.skipped_context += 1
                 continue
             context_start = context_end - self.context_days
-            # context_end = target_time_id  # exclusive
- 
+
             if context_start < 0:
                 self.skipped_context += 1
                 continue  # Not enough history to build context
@@ -133,7 +168,9 @@ class MixedFrequencyDataset(Dataset):
             # if context_df.empty:
             #     self.skipped_context += 1
             #     continue  # Skip if context has no data
-            context_idx = self.df.index[(self.df["time_id"] >= context_start) & (self.df["time_id"] <= context_end)]
+            context_idx = self.df.index[
+                (self.df["time_id"] >= context_start) & (self.df["time_id"] <= context_end)
+            ]
             if len(context_idx) == 0:
                 self.skipped_context += 1
                 continue
