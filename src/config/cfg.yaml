@@ -13,7 +13,7 @@ paths:
 simulation:
   simulate: true
   seed: 123
-  T_months: 360       # total HF steps
+  T_months: 1000       # total HF steps
   ratio: 3            # r months per quarterly observation
   latent_dim: 3       # q (latent VAR dimension)
   nonlinearity: identity   # or "rbf"
@@ -95,10 +95,10 @@ data:
 training:
   seed:           125 #42
   batch_size:     16
-  epochs:         2
+  epochs:         150
   lr:             1.0e-4
   optimize:       true       # toggle Optuna
-  experiment_name: 'Test3'       # optional, or your custom name
+  experiment_name: 'Test6'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
 validation:
@@ -146,7 +146,7 @@ evaluation:
 
 hyperopt:
   study_name: null  # optional name for the Optuna study
-  n_trials: 2
+  n_trials: 100
   d_model: [16, 32, 64, 128, 256, 512, 24, 48, 96, 192, 384]
   nhead: [1, 2, 4, 8]
   num_layers: [1, 2, 3, 4]
