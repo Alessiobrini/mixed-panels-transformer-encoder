@@ -153,7 +153,10 @@ normalize_timestamp <- function(ts_col, is_simulated) {
 
 # 1) Load & prep data
 df <- read_csv(data_path, show_col_types = FALSE) %>%
-  mutate(Timestamp = normalize_timestamp(Timestamp, use_sim))
+  mutate(
+    original_timestamp = Timestamp,
+    Timestamp           = normalize_timestamp(Timestamp, use_sim)
+  )
 
 predictor_monthly_vars <- monthly_vars
 if (use_quarterly_only) {
@@ -185,7 +188,8 @@ quarterly <- df %>%
   arrange(Variable, Timestamp)
 
 # Then isolate the actual target variable series
-target_df <- quarterly %>% filter(Variable == target_var)
+target_df <- quarterly %>%
+  filter(Variable == target_var)
 
 
 # 2) Build monthly ts list dynamically
@@ -213,6 +217,23 @@ n_train <- floor(config$data$train_ratio * n)
 y_train <- window(ind_ts, end = time(ind_ts)[n_train])
 y_test  <- window(ind_ts, start = time(ind_ts)[n_train + 1])
 n_test  <- length(y_test)
+
+# Preserve the original (pre-normalized) timestamps for the test horizon so
+# that downstream consumers can align the MIDAS predictions with other
+# models trained on the same data representation.
+ordered_original_timestamps <- target_df$original_timestamp
+if (length(ordered_original_timestamps) != n) {
+  stop(
+    "Length mismatch between original timestamps and target series after MIDAS preprocessing."
+  )
+}
+
+original_test_timestamps <- ordered_original_timestamps[(n_train + 1):n]
+if (length(original_test_timestamps) != n_test) {
+  stop(
+    "Original timestamp count does not match the number of MIDAS test observations."
+  )
+}
 
 # 4b) Optional: create AR terms for y if enabled
 use_y_lags <- isTRUE(config$model$midas$use_y_lags)
@@ -293,10 +314,11 @@ for (i in seq_len(n_test)) {
 
 # 8) Results table
 results <- tibble(
-  date      = as.Date(paste0(floor(time(y_test)), "-", 
-                             format(3 * cycle(y_test), width = 2, flag = "0"), "-01")),
-  target    = as.numeric(y_test),
-  predicted = preds
+  date                = as.Date(paste0(floor(time(y_test)), "-",
+                                        format(3 * cycle(y_test), width = 2, flag = "0"), "-01")),
+  original_timestamp  = original_test_timestamps,
+  target              = as.numeric(y_test),
+  predicted           = preds
 )
 print(results)
 
