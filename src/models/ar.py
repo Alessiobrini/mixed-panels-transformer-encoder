@@ -4,6 +4,7 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype
 import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
@@ -31,11 +32,18 @@ MAX_LAG     = config.model.ar.max_lag
 # Load and preprocess data
 # ------------------------
 def load_target_series(df, target_var):
-    """Extracts the quarterly target series sorted by time."""
+    """Extracts the quarterly target series sorted by time when appropriate."""
     target_df = df[
         (df["Variable"] == target_var) &
         (df["Frequency"] == "Q")
-    ].sort_values("Timestamp")
+    ]
+
+    # Simulated datasets may contain integer-based timestamps that are already
+    # ordered. In those cases, preserve the original ordering to avoid pandas
+    # attempting to sort non-datetime values as dates.
+    if is_datetime64_any_dtype(target_df["Timestamp"]):
+        target_df = target_df.sort_values("Timestamp")
+
     return target_df[["Timestamp", "Value"]].reset_index(drop=True)
 
 
