@@ -96,8 +96,42 @@ lags   <- config$model$midas$lags
 data_path   <- as.character(glue(data_template, suffix = suffix))
 output_file <- as.character(glue(config$paths$outputs$midas_preds, suffix = suffix))
 
+# Helper to normalize timestamps coming from either real or simulated data
+normalize_timestamp <- function(ts_col) {
+  if (inherits(ts_col, "Date")) {
+    return(ts_col)
+  }
+
+  if (inherits(ts_col, "POSIXt")) {
+    return(as.Date(ts_col))
+  }
+
+  if (is.numeric(ts_col)) {
+    origin <- as.Date("1970-01-01")
+    return(origin %m+% lubridate::months(ts_col))
+  }
+
+  if (is.character(ts_col)) {
+    parsed <- suppressWarnings(lubridate::ymd(ts_col))
+    if (all(!is.na(parsed))) {
+      return(parsed)
+    }
+
+    parsed <- suppressWarnings(as.Date(ts_col))
+    if (all(!is.na(parsed))) {
+      return(parsed)
+    }
+  }
+
+  stop(
+    "Unsupported Timestamp type for MIDAS preprocessing: ",
+    paste(class(ts_col), collapse = ", ")
+  )
+}
+
 # 1) Load & prep data
-df <- read_csv(data_path, show_col_types = FALSE)
+df <- read_csv(data_path, show_col_types = FALSE) %>%
+  mutate(Timestamp = normalize_timestamp(Timestamp))
 
 predictor_monthly_vars <- monthly_vars
 if (use_quarterly_only) {
