@@ -53,7 +53,7 @@ do
   echo "Running synthetic experiment: $EXP_NAME"
   echo "==============================="
 
-  python3 - <<'EOF_PY'
+  python3 - <<EOF_PY
 import yaml
 from pathlib import Path
 
