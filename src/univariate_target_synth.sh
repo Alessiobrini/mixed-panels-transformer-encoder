@@ -30,11 +30,17 @@ CONFIG_BACKUP="${CONFIG_PATH}.bak"
 cp "$CONFIG_PATH" "$CONFIG_BACKUP"
 
 scenarios=(
-  "B1_no_nonlinearity"
-  "B2_no_attention"
-  "B3_no_attention_no_nonlinearity"
-  "B5_no_positional_encoding"
-  "B6_y_only"
+  "B1_no_nonlinearity_nss"
+  "B2_no_attention_nss"
+  "B3_no_attention_no_nonlinearity_nss"
+  "B5_no_positional_encoding_nss"
+  "B6_y_only_nss"
+  
+  "B1_no_nonlinearity_lss"
+  "B2_no_attention_lss"
+  "B3_no_attention_no_nonlinearity_lss"
+  "B5_no_positional_encoding_lss"
+  "B6_y_only_lss"
 )
 
 for scenario in "${scenarios[@]}"
@@ -62,19 +68,36 @@ cfg["simulation"]["simulate"] = True
 
 transformer_cfg = cfg.setdefault("model", {}).setdefault("transformer", {})
 
-if scenario == "no_nonlinearity":
-    transformer_cfg["use_nonlinearity"] = False
-elif scenario == "no_attention":
-    transformer_cfg["use_attention"] = False
-elif scenario == "no_attention_no_nonlinearity":
-    transformer_cfg["use_attention"] = False
-    transformer_cfg["use_nonlinearity"] = False
-elif scenario == "no_positional_encoding":
-    transformer_cfg["use_positional_encoding"] = False
-elif scenario == "y_only_no_positional":
-    cfg["simulation"]["use_y_only_predictors"] = True
+if nss in scenario:
+    if "no_nonlinearity" in scenario:
+        transformer_cfg["use_nonlinearity"] = False
+    elif "no_attention" in scenario:
+        transformer_cfg["use_attention"] = False
+    elif "no_attention_no_nonlinearity" in scenario:
+        transformer_cfg["use_attention"] = False
+        transformer_cfg["use_nonlinearity"] = False
+    elif "no_positional_encoding" in scenario:
+        transformer_cfg["use_positional_encoding"] = False
+    elif "y_only_no_positional" in scenario:
+        cfg["simulation"]["use_y_only_predictors"] = True
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
+elif lss in scenario:
+    if "no_nonlinearity" in scenario:
+        transformer_cfg["use_nonlinearity"] = False
+    elif "no_attention" in scenario:
+        transformer_cfg["use_attention"] = False
+    elif "no_attention_no_nonlinearity" in scenario:
+        transformer_cfg["use_attention"] = False
+        transformer_cfg["use_nonlinearity"] = False
+    elif "no_positional_encoding" in scenario:
+        transformer_cfg["use_positional_encoding"] = False
+    elif "y_only_no_positional" in scenario:
+        cfg["simulation"]["use_y_only_predictors"] = True
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
 else:
-    raise ValueError(f"Unknown scenario: {scenario}")
+    raise ValueError(f"Unknown simulated dynamics: {scenario}")
 
 with open(config_path, "w") as f:
     yaml.dump(cfg, f, sort_keys=False)
