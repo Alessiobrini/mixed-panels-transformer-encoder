@@ -314,9 +314,7 @@ for (i in seq_len(n_test)) {
 
 # 8) Results table
 results <- tibble(
-  date                = as.Date(paste0(floor(time(y_test)), "-",
-                                        format(3 * cycle(y_test), width = 2, flag = "0"), "-01")),
-  original_timestamp  = original_test_timestamps,
+  date                = original_test_timestamps,
   target              = as.numeric(y_test),
   predicted           = preds
 )
