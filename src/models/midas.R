@@ -96,8 +96,64 @@ lags   <- config$model$midas$lags
 data_path   <- as.character(glue(data_template, suffix = suffix))
 output_file <- as.character(glue(config$paths$outputs$midas_preds, suffix = suffix))
 
+# Helper to normalize timestamps coming from either real or simulated data
+normalize_timestamp <- function(ts_col, is_simulated) {
+  if (inherits(ts_col, "Date")) {
+    return(ts_col)
+  }
+
+  if (inherits(ts_col, "POSIXt")) {
+    return(as.Date(ts_col))
+  }
+
+  if (is.numeric(ts_col)) {
+    if (isTRUE(is_simulated)) {
+      # Simulated data stores timestamps as sequential indices rather than
+      # calendar-aware date values. Map these indices onto a monthly Date
+      # sequence while preserving the relative spacing of observations.
+      if (!all(is.finite(ts_col))) {
+        stop("Simulated timestamps must be finite numeric values.")
+      }
+
+      idx <- as.integer(round(ts_col))
+      if (!all(abs(ts_col - idx) < .Machine$double.eps^0.5)) {
+        stop("Simulated timestamps must be whole-number indices.")
+      }
+
+      min_idx    <- min(idx)
+      offsets    <- idx - min_idx
+      seq_length <- max(offsets) + 1
+
+      origin    <- as.Date("2000-01-01")
+      seq_dates <- seq.Date(origin, by = "month", length.out = seq_length)
+
+      return(seq_dates[offsets + 1])
+    }
+
+    return(as.Date(ts_col, origin = "1970-01-01"))
+  }
+
+  if (is.character(ts_col)) {
+    parsed <- suppressWarnings(lubridate::ymd(ts_col))
+    if (all(!is.na(parsed))) {
+      return(parsed)
+    }
+
+    parsed <- suppressWarnings(as.Date(ts_col))
+    if (all(!is.na(parsed))) {
+      return(parsed)
+    }
+  }
+
+  stop(
+    "Unsupported Timestamp type for MIDAS preprocessing: ",
+    paste(class(ts_col), collapse = ", ")
+  )
+}
+
 # 1) Load & prep data
-df <- read_csv(data_path, show_col_types = FALSE)
+df <- read_csv(data_path, show_col_types = FALSE) %>%
+  mutate(Timestamp = normalize_timestamp(Timestamp, use_sim))
 
 predictor_monthly_vars <- monthly_vars
 if (use_quarterly_only) {
