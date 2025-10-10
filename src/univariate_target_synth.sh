@@ -30,11 +30,13 @@ CONFIG_BACKUP="${CONFIG_PATH}.bak"
 cp "$CONFIG_PATH" "$CONFIG_BACKUP"
 
 scenarios=(
+  "mixed_frequency_transformer_nss"
   "B1_no_nonlinearity_nss"
   "B2_no_attention_nss"
   "B3_no_attention_no_nonlinearity_nss"
   "B5_no_positional_encoding_nss"
   "B6_y_only_nss"
+  "mixed_frequency_transformer_nss" 
   "B1_no_nonlinearity_lss"
   "B2_no_attention_lss"
   "B3_no_attention_no_nonlinearity_lss"
@@ -87,6 +89,11 @@ if "nss" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only_no_positional" in scenario:
         record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
+    elif "mixed_frequency_transformer" in scenario:
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", True)
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", True)
+        record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", True)
+        record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", False)
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
 elif "lss" in scenario:
@@ -102,6 +109,11 @@ elif "lss" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only_no_positional" in scenario:
         record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
+    elif "mixed_frequency_transformer" in scenario:
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", True)
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", True)
+        record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", True)
+        record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", False)
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
 else:
