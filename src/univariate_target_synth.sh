@@ -30,11 +30,11 @@ CONFIG_BACKUP="${CONFIG_PATH}.bak"
 cp "$CONFIG_PATH" "$CONFIG_BACKUP"
 
 scenarios=(
-  "no_nonlinearity"
-  "no_attention"
-  "no_attention_no_nonlinearity"
-  "no_positional_encoding"
-  "y_only_no_positional"
+  "B1_no_nonlinearity"
+  "B2_no_attention"
+  "B3_no_attention_no_nonlinearity"
+  "B5_no_positional_encoding"
+  "B6_y_only"
 )
 
 for scenario in "${scenarios[@]}"
@@ -73,7 +73,6 @@ elif scenario == "no_positional_encoding":
     transformer_cfg["use_positional_encoding"] = False
 elif scenario == "y_only_no_positional":
     cfg["simulation"]["use_y_only_predictors"] = True
-    transformer_cfg["use_positional_encoding"] = False
 else:
     raise ValueError(f"Unknown scenario: {scenario}")
 
