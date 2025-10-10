@@ -46,8 +46,11 @@ use_sim <- isTRUE(config$simulation$simulate)
 use_quarterly_only <- FALSE
 if (use_sim) {
   flag <- config$simulation$use_y_only_predictors
-  if (!is.null(flag)) {
-    use_quarterly_only <- isTRUE(flag)
+  if (isTRUE(flag)) {
+    message(
+      "Ignoring simulation$use_y_only_predictors = TRUE for MIDAS estimation; ",
+      "monthly predictors will be used when available."
+    )
   }
 }
 
