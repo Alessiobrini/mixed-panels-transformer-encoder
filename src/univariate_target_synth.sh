@@ -35,7 +35,6 @@ scenarios=(
   "B3_no_attention_no_nonlinearity_nss"
   "B5_no_positional_encoding_nss"
   "B6_y_only_nss"
-  
   "B1_no_nonlinearity_lss"
   "B2_no_attention_lss"
   "B3_no_attention_no_nonlinearity_lss"
@@ -69,6 +68,7 @@ cfg["simulation"]["simulate"] = True
 transformer_cfg = cfg.setdefault("model", {}).setdefault("transformer", {})
 
 if nss in scenario:
+    cfg["simulation"]["nonlinearity"] = "rbf"
     if "no_nonlinearity" in scenario:
         transformer_cfg["use_nonlinearity"] = False
     elif "no_attention" in scenario:
@@ -83,6 +83,7 @@ if nss in scenario:
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
 elif lss in scenario:
+    cfg["simulation"]["nonlinearity"] = "identity"
     if "no_nonlinearity" in scenario:
         transformer_cfg["use_nonlinearity"] = False
     elif "no_attention" in scenario:
