@@ -51,7 +51,7 @@ do
   echo "Running synthetic experiment: $EXP_NAME"
   echo "==============================="
 
-  python3 - <<EOF_PY
+  python3 - <<'EOF_PY'
 import yaml
 from pathlib import Path
 
@@ -61,40 +61,47 @@ scenario = "$scenario"
 with open(config_path, "r") as f:
     cfg = yaml.safe_load(f)
 
-cfg["training"]["experiment_name"] = "$EXP_NAME"
-cfg.setdefault("simulation", {})
-cfg["simulation"]["simulate"] = True
+changes = []
+
+def record_change(path, container, key, value):
+    previous = container.get(key, None)
+    container[key] = value
+    changes.append((path, previous, value))
+
+record_change("training.experiment_name", cfg["training"], "experiment_name", "$EXP_NAME")
+simulation_cfg = cfg.setdefault("simulation", {})
+record_change("simulation.simulate", simulation_cfg, "simulate", True)
 
 transformer_cfg = cfg.setdefault("model", {}).setdefault("transformer", {})
 
-if nss in scenario:
-    cfg["simulation"]["nonlinearity"] = "rbf"
+if "nss" in scenario:
+    record_change("simulation.nonlinearity", simulation_cfg, "nonlinearity", "rbf")
     if "no_nonlinearity" in scenario:
-        transformer_cfg["use_nonlinearity"] = False
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_attention" in scenario:
-        transformer_cfg["use_attention"] = False
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
     elif "no_attention_no_nonlinearity" in scenario:
-        transformer_cfg["use_attention"] = False
-        transformer_cfg["use_nonlinearity"] = False
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
-        transformer_cfg["use_positional_encoding"] = False
+        record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only_no_positional" in scenario:
-        cfg["simulation"]["use_y_only_predictors"] = True
+        record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
-elif lss in scenario:
-    cfg["simulation"]["nonlinearity"] = "identity"
+elif "lss" in scenario:
+    record_change("simulation.nonlinearity", simulation_cfg, "nonlinearity", "identity")
     if "no_nonlinearity" in scenario:
-        transformer_cfg["use_nonlinearity"] = False
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_attention" in scenario:
-        transformer_cfg["use_attention"] = False
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
     elif "no_attention_no_nonlinearity" in scenario:
-        transformer_cfg["use_attention"] = False
-        transformer_cfg["use_nonlinearity"] = False
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
-        transformer_cfg["use_positional_encoding"] = False
+        record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only_no_positional" in scenario:
-        cfg["simulation"]["use_y_only_predictors"] = True
+        record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
 else:
@@ -102,6 +109,13 @@ else:
 
 with open(config_path, "w") as f:
     yaml.dump(cfg, f, sort_keys=False)
+
+if changes:
+    print("Applied configuration overrides:")
+    for path, previous, new in changes:
+        print(f"  {path}: {previous!r} -> {new!r}")
+else:
+    print("No configuration changes were applied.")
 EOF_PY
 
   python3 "$PYTHON_RUNNER"
