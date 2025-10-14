@@ -17,6 +17,7 @@ simulation:
   ratio: 3            # r months per quarterly observation
   latent_dim: 3       # q (latent VAR dimension)
   nonlinearity: identity   # or "rbf"
+  nonlinearity_intensity: 3   # Higher intensity => more RBF centers => more nonlinear behavior.
   # Optional overrides when using RBF features
   # nonlinearity_out_dim: 3
   # nonlinearity_std_match: true
