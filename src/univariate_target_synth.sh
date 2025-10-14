@@ -36,7 +36,7 @@ scenarios=(
   "B3_no_attention_no_nonlinearity_nss"
   "B5_no_positional_encoding_nss"
   "B6_y_only_nss"
-  "mixed_frequency_transformer_nss" 
+  "mixed_frequency_transformer_lss" 
   "B1_no_nonlinearity_lss"
   "B2_no_attention_lss"
   "B3_no_attention_no_nonlinearity_lss"
@@ -87,7 +87,7 @@ if "nss" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
-    elif "y_only_no_positional" in scenario:
+    elif "y_only" in scenario:
         record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
     elif "mixed_frequency_transformer" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", True)
@@ -107,7 +107,7 @@ elif "lss" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
-    elif "y_only_no_positional" in scenario:
+    elif "y_only" in scenario:
         record_change("simulation.use_y_only_predictors", simulation_cfg, "use_y_only_predictors", True)
     elif "mixed_frequency_transformer" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", True)
