@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
 EXPERIMENT_DATE = "2025-10-10"
 SCENARIO_PREFIX = "synth_"
-PLOT_PRE_COVID_ONLY = True
+TIME_COLUMN = "time_index"
 
 PRED_FILES = {
     "transformer": "transformer_preds",
@@ -108,11 +108,11 @@ for folder in scenario_folders:
         file = next(folder.glob(f"{prefix}_*.csv"), None)
         if file is None:
             continue
-        df = pd.read_csv(file, parse_dates=["date"])
-        df = df.rename(columns={df.columns[1]: "true", df.columns[2]: model})
-        df["scenario"] = scenario
-        raw_dfs.append(df[["date", "true"]].copy())
-        pred_dfs.append(df.set_index(["date", "scenario"]))
+        df = pd.read_csv(file)
+        time_col = df.columns[0]
+        df = df.rename(columns={time_col: TIME_COLUMN, df.columns[1]: "true", df.columns[2]: model})
+        raw_dfs.append(df[[TIME_COLUMN, "true"]].copy())
+        pred_dfs.append(df.set_index(TIME_COLUMN))
 
     if not pred_dfs:
         print(f"Skipping {scenario}: no prediction files found.")
@@ -121,7 +121,7 @@ for folder in scenario_folders:
     # Target consistency check
     true_series = []
     for idx, df_raw in enumerate(raw_dfs):
-        series = df_raw.set_index("date")["true"].round(6)
+        series = df_raw.set_index(TIME_COLUMN)["true"].round(6)
         true_series.append(series.rename(f"true_{idx}"))
     df_true_compare = pd.concat(true_series, axis=1, join="inner")
     row_diff = df_true_compare.max(axis=1) - df_true_compare.min(axis=1)
@@ -129,46 +129,35 @@ for folder in scenario_folders:
     unequal = row_diff > tolerance
 
     if unequal.any():
-        print(f"Inconsistent target values for {scenario} on dates (tol={tolerance}):")
+        print(f"Inconsistent target values for {scenario} at indices (tol={tolerance}):")
         print(df_true_compare[unequal].head())
         raise ValueError(f"Target mismatch detected for {scenario}.")
 
     # Merge predictions
     merged = pred_dfs[0].copy()
     for df in pred_dfs[1:]:
-        merged = merged.join(df.drop(columns="true"), how="inner")
+        merged = merged.join(df.drop(columns="true", errors="ignore"), how="inner")
     merged.reset_index(inplace=True)
+    merged["scenario"] = scenario
 
     plot_data[scenario] = merged.copy()
 
-    # Metrics by period
-    masks = {
-        "full": slice(None),
-        "pre_2020": merged["date"] <= pd.Timestamp("2019-06-30"),
-        "post_2020": merged["date"] > pd.Timestamp("2019-06-30"),
-    }
-
-    for period, mask in masks.items():
-        subset = merged.loc[mask]
-        if subset.empty:
+    y_true_full = merged["true"].values
+    for model in PRED_FILES:
+        if model not in merged.columns:
             continue
-        y_true = subset["true"].values
-        for model in PRED_FILES:
-            if model not in subset.columns:
-                continue
-            y_pred = subset[model].values
-            metrics = compute_errors(y_true, y_pred)
-            prediction_metrics.append({
-                "scenario": scenario,
-                "date": suffix,
-                "model": model,
-                "period": period,
-                **metrics,
-            })
+        y_pred = merged[model].values
+        metrics = compute_errors(y_true_full, y_pred)
+        prediction_metrics.append({
+            "scenario": scenario,
+            "date": suffix,
+            "model": model,
+            **metrics,
+        })
 
 # --- Build DataFrames ---
 df_dm = pd.DataFrame(dm_results).set_index(["scenario", "date", "comparison"]) if dm_results else pd.DataFrame()
-df_metrics = pd.DataFrame(prediction_metrics).set_index(["scenario", "date", "model", "period"]) if prediction_metrics else pd.DataFrame()
+df_metrics = pd.DataFrame(prediction_metrics).set_index(["scenario", "date", "model"]) if prediction_metrics else pd.DataFrame()
 
 # --- Summary statistics ---
 if not df_metrics.empty:
@@ -187,17 +176,14 @@ if not df_metrics.empty:
 
         best_models = (
             df_flat
-            .groupby(["scenario", "date", "period"])
+            .groupby(["scenario", "date"])
             .apply(lambda g: g.loc[best_idx(g), "model"], include_groups=False)
         )
 
-        counts = best_models.groupby([
-            best_models.index.get_level_values("period"),
-            best_models,
-        ]).size()
+        counts = best_models.groupby(best_models).size().sort_values(ascending=False)
 
         print(f"\n=== Best model counts by {metric} ===")
-        print(counts.unstack().fillna(0).astype(int))
+        print(counts)
 else:
     print("No prediction metrics available.")
 
@@ -207,13 +193,12 @@ print("\n=== Plotting predictions per scenario ===")
 for scenario, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
     df_plot = merged.copy()
-    if PLOT_PRE_COVID_ONLY:
-        df_plot = df_plot[df_plot["date"] <= pd.Timestamp("2019-06-30")]
-    ax.plot(df_plot["date"], df_plot["true"], "k--", label="True")
+    ax.plot(df_plot[TIME_COLUMN], df_plot["true"], "k--", label="True")
     for model in PLOT_MODELS:
         if model in df_plot.columns:
-            ax.plot(df_plot["date"], df_plot[model], label=model.capitalize())
+            ax.plot(df_plot[TIME_COLUMN], df_plot[model], label=model.capitalize())
     ax.set_title(f"{scenario} Predictions")
+    ax.set_xlabel(TIME_COLUMN)
     ax.legend()
     plt.tight_layout()
     plt.show()
@@ -223,42 +208,29 @@ print("\n=== Model Confidence Set (MCS) Results ===")
 mcs_results = []
 
 for scenario, merged in plot_data.items():
-    masks = {
-        "full": slice(None),
-        "pre_2020": merged["date"] <= pd.Timestamp("2019-06-30"),
-        "post_2020": merged["date"] > pd.Timestamp("2019-06-30"),
+    y_true = merged["true"].values
+    preds = {
+        model: merged[model].values
+        for model in PRED_FILES
+        if model in merged.columns and model != "ar"
     }
-
-    for period, mask in masks.items():
-        df_sub = merged.loc[mask]
-        if df_sub.empty:
-            continue
-        y_true = df_sub["true"].values
-        preds = {
-            model: df_sub[model].values
-            for model in PRED_FILES
-            if model in df_sub.columns and model != "ar"
-        }
-        if len(preds) < 2:
-            continue
-
-        try:
-            included_models, pvals = run_mcs(y_true, preds, size=0.10, reps=1000, seed=42)
-            mcs_results.append({
-                "scenario": scenario,
-                "period": period,
-                "included_models": included_models,
-                "pvalues": pvals,
-            })
-        except Exception as exc:
-            print(f"Skipping MCS for {scenario} ({period}) due to error: {exc}")
-
-print("\n=== MCS Summary by Scenario (Full Period Only) ===")
-for row in mcs_results:
-    if row["period"] != "full":
+    if len(preds) < 2:
         continue
+
+    try:
+        included_models, pvals = run_mcs(y_true, preds, size=0.10, reps=1000, seed=42)
+        mcs_results.append({
+            "scenario": scenario,
+            "included_models": included_models,
+            "pvalues": pvals,
+        })
+    except Exception as exc:
+        print(f"Skipping MCS for {scenario} due to error: {exc}")
+
+print("\n=== MCS Summary by Scenario ===")
+for row in mcs_results:
     included = ", ".join(row["included_models"]) if row["included_models"] else "<none>"
-    print(f"{row['scenario']} ({row['period']}): included = {included}")
+    print(f"{row['scenario']}: included = {included}")
     print("p-values:")
     print(row["pvalues"])
     print()
@@ -266,11 +238,9 @@ for row in mcs_results:
 model_counter = Counter()
 model_pvalues = defaultdict(list)
 
-num_scenarios = sum(1 for row in mcs_results if row["period"] == "full")
+num_scenarios = len(mcs_results)
 
 for row in mcs_results:
-    if row["period"] != "full":
-        continue
     included = row["included_models"]
     pvals = row["pvalues"]
 
@@ -283,7 +253,7 @@ for row in mcs_results:
         else:
             model_pvalues[model].append(np.nan)
 
-print("\n=== MCS Inclusion Frequency and Avg p-value (Full Period) ===")
+print("\n=== MCS Inclusion Frequency and Avg p-value ===")
 print(f"Total scenarios evaluated: {num_scenarios}\n")
 
 for model in sorted(model_counter):
