@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-09-26"
+EXPERIMENT_DATE = "2025-10-10"
 SCENARIO_PREFIX = "synth_"
 PLOT_PRE_COVID_ONLY = True
 
