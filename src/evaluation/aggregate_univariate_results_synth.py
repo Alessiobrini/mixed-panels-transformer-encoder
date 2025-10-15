@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
 EXPERIMENT_DATE = "2025-10-10"
 SCENARIO_PREFIX = "synth_"
-TIME_COLUMN = "time_index"
+TIME_COLUMN = "date"
 
 PRED_FILES = {
     "transformer": "transformer_preds",
