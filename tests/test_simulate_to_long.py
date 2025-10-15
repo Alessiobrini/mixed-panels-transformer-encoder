@@ -35,6 +35,7 @@ def run_simulation(
     noise_kind="t",
     nonlinearity="identity",
     output_std_match=False,
+    intensity=None,
 ):
     rng = np.random.RandomState(seed)
     link = sim.make_link(
@@ -43,6 +44,7 @@ def run_simulation(
         out_dim=cfg.get("link_out", cfg["k"]),
         rng=rng,
         output_std_match=output_std_match,
+        intensity=intensity,
     )
 
     total_steps = cfg["T"] + cfg["burn_in"]
@@ -304,6 +306,14 @@ def test_rbf_column_standardization():
     gF = link(F)
     stds = gF.std(axis=0)
     np.testing.assert_allclose(stds, np.ones_like(stds), atol=0.1)
+
+
+def test_rbf_intensity_controls_centers():
+    rng = np.random.RandomState(51)
+    F = rng.normal(size=(150, 2))
+    link = sim.make_link("rbf", q=2, out_dim=2, rng=rng, intensity=7)
+    gF = link(F)
+    assert gF.shape[1] == 7
 
 
 def test_noise_kurtosis_behaviour(monkeypatch, small_config):

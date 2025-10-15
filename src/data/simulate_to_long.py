@@ -61,9 +61,11 @@ def simulate_latent_VAR2(T, q, rng=None, burn_in=300):
 def id_features(F):
     return F
 
-def rbf_features(F, rng, out_dim, output_std_match=False):
+def rbf_features(F, rng, n_centers, output_std_match=False):
+    """Return RBF features with ``n_centers`` radial basis functions."""
+    # Higher intensity => more RBF centers => richer nonlinear behavior.
     # centers ~ N(0,1), median distance gamma heuristic
-    K, q = out_dim, F.shape[1]
+    K, q = n_centers, F.shape[1]
     C = rng.normal(0, 1, size=(K, q))
     if K > 1:
         d2 = ((C[:, None, :] - C[None, :, :])**2).sum(-1)
@@ -86,12 +88,21 @@ def rbf_features(F, rng, out_dim, output_std_match=False):
         Phi = Phi * target_std
     return Phi
 
-def make_link(kind, q, out_dim, rng, *, output_std_match=False):
+def make_link(kind, q, out_dim, rng, *, output_std_match=False, intensity=None):
     kind = kind.lower()
     if kind in ("linear", "identity", "id"):
         return lambda F: id_features(F)
     if kind == "rbf":
-        return lambda F: rbf_features(F, rng, out_dim, output_std_match=output_std_match)
+        if intensity is not None:
+            n_centers = max(1, int(intensity))
+        else:
+            n_centers = out_dim
+        return lambda F: rbf_features(
+            F,
+            rng,
+            n_centers,
+            output_std_match=output_std_match,
+        )
     raise ValueError(f"Unsupported nonlinearity type: {kind}")
 
 # --------- noise helpers ----------
@@ -258,10 +269,14 @@ if __name__ == "__main__":
     r            = getattr(config.simulation, "ratio", 3)         # 3 months per quarter
     q            = getattr(config.simulation, "latent_dim", 3)
     nonlinear_cfg = getattr(config.simulation, "nonlinearity", "identity")
+    nonlinear_intensity = None
     if isinstance(nonlinear_cfg, str):
         nonlinear_type = nonlinear_cfg
         nonlinear_out_dim = getattr(config.simulation, "nonlinearity_out_dim", q)
         nonlinear_std_match = getattr(config.simulation, "nonlinearity_std_match", False)
+        nonlinear_intensity = getattr(
+            config.simulation, "nonlinearity_intensity", None
+        )
     elif isinstance(nonlinear_cfg, dict):
         nonlinear_type = nonlinear_cfg.get("type", "identity")
         nonlinear_out_dim = nonlinear_cfg.get(
@@ -269,6 +284,9 @@ if __name__ == "__main__":
         )
         nonlinear_std_match = nonlinear_cfg.get(
             "output_std_match", getattr(config.simulation, "nonlinearity_std_match", False)
+        )
+        nonlinear_intensity = nonlinear_cfg.get(
+            "intensity", getattr(config.simulation, "nonlinearity_intensity", None)
         )
     else:
         nonlinear_type = getattr(nonlinear_cfg, "type", "identity")
@@ -282,6 +300,25 @@ if __name__ == "__main__":
             "output_std_match",
             getattr(config.simulation, "nonlinearity_std_match", False),
         )
+        nonlinear_intensity = getattr(
+            nonlinear_cfg,
+            "intensity",
+            getattr(config.simulation, "nonlinearity_intensity", None),
+        )
+
+    if isinstance(nonlinear_type, str) and nonlinear_type.lower() == "rbf":
+        if nonlinear_intensity is not None:
+            try:
+                nonlinear_intensity = int(nonlinear_intensity)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "simulation.nonlinearity_intensity must be an integer"
+                ) from exc
+            if nonlinear_intensity < 1:
+                raise ValueError(
+                    "simulation.nonlinearity_intensity must be >= 1 for RBF features"
+                )
+            nonlinear_out_dim = nonlinear_intensity
     Lx           = getattr(config.simulation, "Lx", 1)
     Ly           = getattr(config.simulation, "Ly", 1)
 
@@ -311,6 +348,7 @@ if __name__ == "__main__":
         out_dim=nonlinear_out_dim,
         rng=rng,
         output_std_match=nonlinear_std_match,
+        intensity=nonlinear_intensity,
     )
 
     F_full, _ = simulate_latent_VAR2(T_months, q, rng=rng, burn_in=burn_in)
