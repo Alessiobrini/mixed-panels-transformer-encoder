@@ -30,6 +30,9 @@ simulation:
   p_y: 4              # number of quarterly vars -> Y1
   noise_rescale_x: 1.0   # global multiplier for monthly noise shocks
   noise_rescale_y: 1.0   # global multiplier for quarterly noise shocks
+  spectral_target: 0.99
+  # spectral_target_x: 0.98   # optional override for monthly block
+  # spectral_target_y: 0.95   # optional override for quarterly block
   target: Y1
   use_y_only_predictors: false
 

@@ -25,23 +25,59 @@ def _make_stable_var2(Phi1, Phi2, target=0.9):
     return Phi1, Phi2
 
 
-def _rescale_var_mats(mats, target=0.9):
-    """Rescale VAR coefficient matrices to keep spectral radius <= ``target``."""
+def _draw_signed_uniform(rng, shape, low=1.0, high=2.0):
+    """Draw values uniformly from ``(-high, -low) ∪ (low, high)``."""
+
+    if low <= 0 or high <= 0:
+        raise ValueError("`low` and `high` must be positive to define |value| bounds.")
+    if low >= high:
+        raise ValueError("`low` must be strictly less than `high`.")
+
+    draws = rng.uniform(-high, high, size=shape)
+    mask = np.abs(draws) < low
+    while np.any(mask):
+        draws[mask] = rng.uniform(-high, high, size=mask.sum())
+        mask = np.abs(draws) < low
+    return draws
+
+
+def _rescale_var_mats(mats, target=0.99):
+    """Rescale VAR coefficient matrices so the spectral radius reaches ``target``."""
+    if target <= 0 or target >= 1.0:
+        raise ValueError("spectral radius target must be in (0, 1).")
+
     if not mats:
-        return mats
+        return mats, 0.0, 0.0
 
     p = mats[0].shape[0]
     L = len(mats)
-    companion = np.zeros((p * L, p * L))
-    companion[:p, :p * L] = np.hstack(mats)
-    if L > 1:
-        companion[p:, :-p] = np.eye(p * (L - 1))
 
-    rho = _spectral_radius(companion)
-    if rho > target:
-        scale = target / rho
-        mats = [A * scale for A in mats]
-    return mats
+    def _companion(matrices):
+        companion = np.zeros((p * L, p * L))
+        companion[:p, :p * L] = np.hstack(matrices)
+        if L > 1:
+            companion[p:, :-p] = np.eye(p * (L - 1))
+        return companion
+
+    companion = _companion(mats)
+    rho_before = _spectral_radius(companion)
+
+    if rho_before == 0.0:
+        return mats, rho_before, rho_before
+
+    scale = target / max(rho_before, np.finfo(float).eps)
+    mats = [A * scale for A in mats]
+
+    companion_scaled = _companion(mats)
+    rho_after = _spectral_radius(companion_scaled)
+
+    if rho_after > target:
+        correction = target / max(rho_after, np.finfo(float).eps)
+        mats = [A * correction for A in mats]
+        companion_scaled = _companion(mats)
+        rho_after = _spectral_radius(companion_scaled)
+
+    return mats, rho_before, rho_after
 
 def simulate_latent_VAR2(T, q, rng=None, burn_in=300):
     if rng is None:
@@ -161,6 +197,7 @@ def simulate_hf_block(
     noise_rescale=1.0,
     student_df=8,
     gF=None,
+    spectral_target=0.99,
 ):
     T, _ = F.shape
     if gF is None:
@@ -168,8 +205,13 @@ def simulate_hf_block(
     elif gF.shape[0] != T:
         raise ValueError("Length mismatch between provided factors and F in HF block.")
     d_g = gF.shape[1]
-    A = [rng.uniform(-0.3, 0.3, size=(p_x, p_x)) for _ in range(Lx)]
-    A = _rescale_var_mats(A, target=0.9)
+    A = [_draw_signed_uniform(rng, (p_x, p_x), low=1.0, high=2.0) for _ in range(Lx)]
+    A, rho_before, rho_after = _rescale_var_mats(A, target=spectral_target) if A else (A, 0.0, 0.0)
+    if A:
+        print(
+            f"[simulate_hf_block] spectral radius {rho_before:.4f} -> {rho_after:.4f} "
+            f"(target={spectral_target:.4f})"
+        )
     Lambda_fx = make_almon_lag_matrices(q_fx + 1, p_x, d_g, rng)
     Sigma = cov_scale * np.eye(p_x)
 
@@ -205,6 +247,7 @@ def simulate_lf_block(
     cov_scale=1.0,
     noise_rescale=1.0,
     gF=None,
+    spectral_target=0.99,
 ):
     T, _ = F.shape
     idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
@@ -213,8 +256,13 @@ def simulate_lf_block(
     elif gF.shape[0] != T:
         raise ValueError("Length mismatch between provided factors and F in LF block.")
     d_g = gF.shape[1]
-    C = [rng.uniform(-0.4, 0.4, size=(p_y, p_y)) for _ in range(Ly)]
-    C = _rescale_var_mats(C, target=0.9)
+    C = [_draw_signed_uniform(rng, (p_y, p_y), low=1.0, high=2.0) for _ in range(Ly)]
+    C, rho_before, rho_after = _rescale_var_mats(C, target=spectral_target) if C else (C, 0.0, 0.0)
+    if C:
+        print(
+            f"[simulate_lf_block] spectral radius {rho_before:.4f} -> {rho_after:.4f} "
+            f"(target={spectral_target:.4f})"
+        )
     Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng)
     Sigma = cov_scale * np.eye(p_y)
 
@@ -359,6 +407,9 @@ if __name__ == "__main__":
     cov_scale_y = getattr(config.simulation, "cov_scale_y", 1.0)
     noise_rescale_x = getattr(config.simulation, "noise_rescale_x", 1.0)
     noise_rescale_y = getattr(config.simulation, "noise_rescale_y", 1.0)
+    spectral_target_default = getattr(config.simulation, "spectral_target", 0.99)
+    spectral_target_x = getattr(config.simulation, "spectral_target_x", spectral_target_default)
+    spectral_target_y = getattr(config.simulation, "spectral_target_y", spectral_target_default)
 
     X_full = simulate_hf_block(
         F_full,
@@ -371,6 +422,7 @@ if __name__ == "__main__":
         cov_scale=cov_scale_x,
         noise_rescale=noise_rescale_x,
         gF=gF_full,
+        spectral_target=spectral_target_x,
     )         # [T_total, p_x]
     idx_q_full, Y_full = simulate_lf_block(
         F_full,
@@ -383,6 +435,7 @@ if __name__ == "__main__":
         cov_scale=cov_scale_y,
         noise_rescale=noise_rescale_y,
         gF=gF_full,
+        spectral_target=spectral_target_y,
     )  # [T_Q_full, p_y]
 
     # Discard burn-in observations across all simulated series

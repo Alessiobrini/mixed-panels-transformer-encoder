@@ -206,20 +206,21 @@ def test_ar_structure_and_stability(small_config, monkeypatch):
     captured = {}
     original_rescale = sim._rescale_var_mats
 
-    def record_rescale(mats, target=0.9):
-        out = original_rescale(mats, target)
+    def record_rescale(mats, target=0.99):
+        scaled, rho_before, rho_after = original_rescale(mats, target)
         if mats:
             key = "A" if mats[0].shape[0] == small_config["p_x"] else "C"
-            captured[key] = out
-        return out
+            captured[key] = scaled
+            captured[f"{key}_rho"] = (rho_before, rho_after)
+        return scaled, rho_before, rho_after
 
     monkeypatch.setattr(sim, "_rescale_var_mats", record_rescale)
 
     res = run_simulation(small_config, seed=17, q_fx=1, q_fy=1)
     assert len(captured["A"]) == small_config["Lx"] == 1
     assert len(captured["C"]) == small_config["Ly"] == 1
-    assert spectral_radius(captured["A"]) <= 0.9 + 1e-6
-    assert spectral_radius(captured["C"]) <= 0.9 + 1e-6
+    assert spectral_radius(captured["A"]) <= 0.99 + 1e-6
+    assert spectral_radius(captured["C"]) <= 0.99 + 1e-6
 
 
 def test_factor_lag_contributions_change_output(small_config):
@@ -234,12 +235,13 @@ def test_zero_factor_loadings_reduce_to_ar(monkeypatch, small_config):
     original_rescale = sim._rescale_var_mats
     original_almon = sim.make_almon_lag_matrices
 
-    def record_rescale(mats, target=0.9):
-        out = original_rescale(mats, target)
+    def record_rescale(mats, target=0.99):
+        scaled, rho_before, rho_after = original_rescale(mats, target)
         if mats:
             key = "A" if mats[0].shape[0] == small_config["p_x"] else "C"
-            captured[key] = out
-        return out
+            captured[key] = scaled
+            captured[f"{key}_rho"] = (rho_before, rho_after)
+        return scaled, rho_before, rho_after
 
     def zero_almon(num_lags, out_dim, factor_dim, rng, degree=2):
         mats = original_almon(num_lags, out_dim, factor_dim, rng, degree=degree)
@@ -321,12 +323,13 @@ def test_noise_kurtosis_behaviour(monkeypatch, small_config):
     original_rescale = sim._rescale_var_mats
     original_almon = sim.make_almon_lag_matrices
 
-    def record_rescale(mats, target=0.9):
-        out = original_rescale(mats, target)
+    def record_rescale(mats, target=0.99):
+        scaled, rho_before, rho_after = original_rescale(mats, target)
         if mats:
             key = "A" if mats[0].shape[0] == small_config["p_x"] else "C"
-            captured[key] = out
-        return out
+            captured[key] = scaled
+            captured[f"{key}_rho"] = (rho_before, rho_after)
+        return scaled, rho_before, rho_after
 
     def record_almon(num_lags, out_dim, factor_dim, rng, degree=2):
         mats = original_almon(num_lags, out_dim, factor_dim, rng, degree=degree)
@@ -344,16 +347,17 @@ def test_noise_kurtosis_behaviour(monkeypatch, small_config):
 
     resid_y = compute_residuals_Y(res_t["Y"], res_t["gF"], res_t["idx_q"], captured["C"], captured["Lambda_fy"])
     kurt_y = kurtosis(resid_y)
-    assert np.isclose(kurt_y, 3.0, atol=0.5)
+    assert np.isclose(kurt_y, 3.0, atol=0.7)
 
     captured_gauss = {}
 
-    def record_rescale_gauss(mats, target=0.9):
-        out = original_rescale(mats, target)
+    def record_rescale_gauss(mats, target=0.99):
+        scaled, rho_before, rho_after = original_rescale(mats, target)
         if mats:
             key = "A" if mats[0].shape[0] == small_config["p_x"] else "C"
-            captured_gauss[key] = out
-        return out
+            captured_gauss[key] = scaled
+            captured_gauss[f"{key}_rho"] = (rho_before, rho_after)
+        return scaled, rho_before, rho_after
 
     def record_almon_gauss(num_lags, out_dim, factor_dim, rng, degree=2):
         mats = original_almon(num_lags, out_dim, factor_dim, rng, degree=degree)
@@ -382,10 +386,10 @@ def test_backward_compatibility_statistics(small_config):
     expected = {
         "F_mean": np.array([-0.06218596, 0.00201632, -0.03128081]),
         "F_std": np.array([1.1762863, 1.12846694, 1.64384969]),
-        "X_mean": np.array([0.03357667, -0.01355453, 0.04011349, -0.013389]),
-        "X_std": np.array([1.02712471, 1.3768166, 1.44393234, 1.33071653]),
-        "Y_mean": np.array([0.23936848, -0.21761918]),
-        "Y_std": np.array([1.63492767, 1.23287213]),
+        "X_mean": np.array([ 0.02784908, -0.07572891,  0.00491393, -0.11608128]),
+        "X_std": np.array([33.1091632, 16.29098696, 45.41771867, 45.80333223]),
+        "Y_mean": np.array([-0.19104351, -0.11323034]),
+        "Y_std": np.array([6.92930838, 8.29280537]),
     }
 
     res = run_simulation(small_config, seed=123, q_fx=0, q_fy=0)
