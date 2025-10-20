@@ -12,6 +12,52 @@
 set -e
 set -o pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: univariate_target_synth.sh [--mode MODE]
+
+Options:
+  --mode MODE  Set scenario selection. MODE can be "all" (default)
+               or "nss" to run only scenarios ending with "nss".
+  -h, --help   Show this help message and exit.
+EOF
+}
+
+MODE="all"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)
+      if [[ -z "$2" ]]; then
+        echo "Error: --mode requires a value." >&2
+        usage
+        exit 1
+      fi
+      MODE="$2"
+      shift 2
+      ;;
+    --nss-only)
+      MODE="nss"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$MODE" != "all" && "$MODE" != "nss" ]]; then
+  echo "Unsupported mode: $MODE" >&2
+  usage
+  exit 1
+fi
+
 source ~/.bashrc
 conda activate tsa-dev
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
@@ -44,7 +90,27 @@ scenarios=(
   "B6_y_only_lss"
 )
 
-for scenario in "${scenarios[@]}"
+selected_scenarios=()
+
+if [[ "$MODE" == "nss" ]]; then
+  for scenario in "${scenarios[@]}"; do
+    if [[ "$scenario" == *nss ]]; then
+      selected_scenarios+=("$scenario")
+    fi
+  done
+else
+  selected_scenarios=("${scenarios[@]}")
+fi
+
+if [[ ${#selected_scenarios[@]} -eq 0 ]]; then
+  echo "No scenarios selected for mode '$MODE'." >&2
+  exit 1
+fi
+
+echo "Running mode: $MODE"
+echo "Selected scenarios: ${selected_scenarios[*]}"
+
+for scenario in "${selected_scenarios[@]}"
 do
   cp "$CONFIG_BACKUP" "$CONFIG_PATH"
   EXP_NAME="synth_${scenario}_${TODAY}"
