@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-10-10"
+EXPERIMENT_DATE = "2025-10-17"
 SCENARIO_PREFIX = "synth_"
 TIME_COLUMN = "date"
 
@@ -264,3 +264,9 @@ for model in sorted(model_counter):
     freq_str = f"{freq:.1%}" if num_scenarios else "nan"
     avg_p_str = f"{avg_p:.3f}" if not np.isnan(avg_p) else "nan"
     print(f"{model:<12} included in {count:2d} / {num_scenarios} scenarios ({freq_str}), avg p-value = {avg_p_str}")
+
+
+
+dft =df_metrics.xs('transformer',level=2)
+dftnss = dft[dft.index.get_level_values("scenario").str.contains("nss")]
+dftlss = dft[dft.index.get_level_values("scenario").str.contains("lss")]
