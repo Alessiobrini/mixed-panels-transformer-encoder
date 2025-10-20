@@ -2,7 +2,7 @@
 #
 #SBATCH --job-name=tsa-experiments-synth
 #SBATCH --partition=gpu-common
-#SBATCH --mem=8G
+#SBATCH --mem=16G
 #SBATCH --gpus=1
 #SBATCH --output=slurm_synth.out
 #SBATCH --error=slurm_synth.err
