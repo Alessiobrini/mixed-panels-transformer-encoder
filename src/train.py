@@ -440,9 +440,11 @@ def run_optuna(config, csv_path, exp_path, suffix):
         exp_path=exp_path,
         suffix=suffix
     )
+    sampler = optuna.samplers.TPESampler(seed=config.training.seed)
     study = optuna.create_study(
         study_name=config.hyperopt.study_name,
-        direction='minimize'
+        direction='minimize',
+        sampler=sampler,
     )
     study.optimize(algo, n_trials=config.hyperopt.n_trials)
 
