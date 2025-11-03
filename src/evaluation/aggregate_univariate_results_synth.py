@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-10-17"
+EXPERIMENT_DATE = "2025-10-20" #"2025-10-17"
 SCENARIO_PREFIX = "synth_"
 TIME_COLUMN = "date"
 
@@ -270,3 +270,7 @@ for model in sorted(model_counter):
 dft =df_metrics.xs('transformer',level=2)
 dftnss = dft[dft.index.get_level_values("scenario").str.contains("nss")]
 dftlss = dft[dft.index.get_level_values("scenario").str.contains("lss")]
+
+dfm = df_metrics.xs('midas',level=2)
+dfmnss = dfm[dfm.index.get_level_values("scenario").str.contains("nss")]
+dfmlss = dfm[dfm.index.get_level_values("scenario").str.contains("lss")]
