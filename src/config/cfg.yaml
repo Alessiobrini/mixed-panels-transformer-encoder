@@ -13,11 +13,11 @@ paths:
 simulation:
   simulate: true
   seed: 123
-  T_months: 1000       # total HF steps
+  T_months: 200       # total HF steps
   ratio: 3            # r months per quarterly observation
   latent_dim: 3       # q (latent VAR dimension)
-  nonlinearity: identity   # or "rbf"
-  nonlinearity_intensity: 3   # Higher intensity => more RBF centers => more nonlinear behavior.
+  nonlinearity: rbf   # identity or "rbf"
+  nonlinearity_intensity: 6   # Higher intensity => more RBF centers => more nonlinear behavior.
   # Optional overrides when using RBF features
   # nonlinearity_out_dim: 3
   # nonlinearity_std_match: true
@@ -26,13 +26,13 @@ simulation:
   factor_lags:
     q_fx: 4          # number of latent factor lags for monthly block
     q_fy: 4           # number of latent factor lags for quarterly block
-  p_x: 40              # number of monthly vars -> X1..X8
+  p_x: 30              # number of monthly vars -> X1..X8
   p_y: 5              # number of quarterly vars -> Y1
   noise_rescale_x: 1.0   # global multiplier for monthly noise shocks
   noise_rescale_y: 1.0   # global multiplier for quarterly noise shocks
-  spectral_target: 0.99
-  # spectral_target_x: 0.98   # optional override for monthly block
-  # spectral_target_y: 0.95   # optional override for quarterly block
+  spectral_target: 0.8
+  spectral_target_x: 0.5   # optional override for monthly block
+  spectral_target_y: 0.4   # optional override for quarterly block
   target: Y1
   use_y_only_predictors: false
 
@@ -99,9 +99,9 @@ data:
 training:
   seed:           125 #42
   batch_size:     16
-  epochs:         150
+  epochs:         2
   lr:             1.0e-4
-  optimize:       true       # toggle Optuna
+  optimize:       false       # toggle Optuna
   experiment_name: 'Test6'       # optional, or your custom name
   patience:       10           # optional, early-stopping patience
 
