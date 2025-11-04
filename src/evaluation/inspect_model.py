@@ -74,6 +74,20 @@ def _default_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _to_plain_data(value):
+    """Recursively convert ConfigNode-style objects to built-in containers."""
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, Mapping):
+        return {key: _to_plain_data(val) for key, val in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_to_plain_data(item) for item in value]
+    if hasattr(value, "__dict__"):
+        return {key: _to_plain_data(getattr(value, key)) for key in vars(value)}
+    return value
+
+
 @dataclass
 class ModelParams:
     d_model: int
@@ -500,7 +514,57 @@ def inspect_experiment(
 
 
 if __name__ == "__main__":
-    raise SystemExit(
-        "Call inspect_experiment(experiment=...) from Python instead of using CLI arguments."
-    )
+    config_path = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
+    project_config = Config(config_path)
+    evaluation_cfg = getattr(project_config, "evaluation", None)
+    inspection_cfg = getattr(evaluation_cfg, "inspection", None) if evaluation_cfg else None
+    raw_runs = getattr(inspection_cfg, "runs", None) if inspection_cfg else None
+    runs = _to_plain_data(raw_runs) if raw_runs else []
+
+    if not runs:
+        raise SystemExit(
+            "No inspection runs configured. Populate 'evaluation.inspection.runs' in "
+            f"{config_path}."
+        )
+
+    allowed_keys = {
+        "experiment",
+        "device",
+        "print_weights",
+        "split",
+        "batch_index",
+        "capture",
+        "run_forward",
+        "enabled",
+    }
+
+    for index, run in enumerate(runs, start=1):
+        if not isinstance(run, Mapping):
+            raise SystemExit(
+                f"Run #{index} inside 'evaluation.inspection.runs' must be a mapping."
+            )
+
+        unknown = sorted(set(run) - allowed_keys)
+        if unknown:
+            raise SystemExit(
+                f"Run #{index} includes unsupported keys: " + ", ".join(unknown)
+            )
+
+        if not run.get("enabled", True):
+            print(f"Skipping disabled inspection run #{index}.")
+            continue
+
+        kwargs = {key: value for key, value in run.items() if key in allowed_keys}
+        kwargs.pop("enabled", None)
+
+        capture = kwargs.get("capture")
+        if isinstance(capture, str):
+            kwargs["capture"] = [capture]
+        elif capture is None:
+            kwargs.pop("capture", None)
+
+        print(f"\n--- Running inspection #{index}: {kwargs.get('experiment')} ---")
+        inspect_experiment(**kwargs)
+
+    print("\nAll configured inspection runs completed.")
 
