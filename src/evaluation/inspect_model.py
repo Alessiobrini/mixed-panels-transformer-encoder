@@ -1,6 +1,7 @@
 """Reload a trained Mixed-Frequency Transformer from an experiment folder."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -15,7 +16,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.train import build_model, prepare_data  # noqa: E402
 from src.utils.config import Config  # noqa: E402
-from src.utils.data_paths import resolve_data_paths  # noqa: E402
+from src.utils.data_paths import (  # noqa: E402
+    is_simulation_enabled,
+    resolve_data_paths,
+)
 
 
 def _default_device(device: Optional[str]) -> torch.device:
@@ -145,14 +149,38 @@ def _load_checkpoint(directory: Path) -> Path:
     return max(checkpoints, key=lambda path: path.stat().st_mtime)
 
 
-def _prepare_training_artifacts(config: Config):
+def _ensure_processed_data(config: Config) -> Path:
     csv_path, _, _, _ = resolve_data_paths(config, PROJECT_ROOT)
+    if csv_path.exists():
+        return csv_path
+
+    script_name = "simulate_to_long.py" if is_simulation_enabled(config) else "convert_fred_to_long.py"
+    script_path = PROJECT_ROOT / "src" / "data" / script_name
+    subprocess.run([sys.executable, str(script_path)], check=True, cwd=PROJECT_ROOT)
+
+    if not csv_path.exists():  # pragma: no cover - defensive
+        raise FileNotFoundError(f"Expected processed data at {csv_path} after running {script_name}.")
+    return csv_path
+
+
+def _prepare_training_artifacts(config: Config) -> Dict[str, Any]:
+    csv_path = _ensure_processed_data(config)
     data = prepare_data(csv_path, config)
+
     if config.training.optimize:
-        full_dataset, train_loader, *_ = data
+        full_dataset, train_loader, val_loader, test_loader, test_idx = data
     else:
-        full_dataset, train_loader, *_ = data
-    return full_dataset, train_loader
+        full_dataset, train_loader, test_loader, test_idx = data
+        val_loader = None
+
+    return {
+        "dataset": full_dataset,
+        "train_loader": train_loader,
+        "val_loader": val_loader,
+        "test_loader": test_loader,
+        "test_indices": test_idx,
+        "csv_path": str(csv_path),
+    }
 
 
 def reload_from_config(
@@ -192,7 +220,9 @@ def reload_from_config(
     use_nonlinearity = _as_bool(getattr(transformer_cfg, "use_nonlinearity", True))
     use_attention = _as_bool(getattr(transformer_cfg, "use_attention", True))
 
-    full_dataset, train_loader = _prepare_training_artifacts(run_config)
+    data_artifacts = _prepare_training_artifacts(run_config)
+    full_dataset = data_artifacts["dataset"]
+    train_loader = data_artifacts["train_loader"]
 
     model = build_model(
         full_dataset,
@@ -226,6 +256,7 @@ def reload_from_config(
         "params_path": str(params_path) if params_path.exists() else None,
         "applied_overrides": applied_overrides,
         "device": str(target_device),
+        "data_artifacts": data_artifacts,
     }
 
     return model, run_config, checkpoint_path, meta
