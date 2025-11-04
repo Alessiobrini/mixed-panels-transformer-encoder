@@ -7,39 +7,41 @@ for
 * capturing intermediate activations from selected submodules during a forward
   pass.
 
-Runtime configuration is supplied via the project YAML configuration file
-(``src/config/cfg.yaml`` by default).  Under the ``evaluation.inspection``
-section you may describe one or more inspection "runs", for example::
+Only a single input – the experiment folder under ``outputs/experiments`` – is
+required.  Each experiment directory must contain the following files emitted
+by training:
 
-    evaluation:
-      inspection:
-        runs:
-          - name: optuna-best
-            experiment_dir: outputs/experiments/Test6
-            # checkpoint: outputs/experiments/Test6/best_model.pt  # optional when experiment_dir is set
-            # params: outputs/experiments/Test6/full_final_params.yaml  # optional when co-located
-            device: cuda
-            print_weights: true
-            split: test
-            batch_index: 0
-            capture:
-              - input_proj
-              - transformer_encoder.layers.0
-              - transformer_encoder.layers.-1
-              - prediction_head
-            forward_pass: true
+* ``best_model_trial_*.pt`` – model weights to load,
+* ``full_final_params.yaml`` – Optuna-optimised model hyper-parameters,
+* ``used_config.yaml`` – the training configuration used to recreate the
+  dataset and loaders.
 
-To trigger the inspector simply execute ``python -m src.evaluation.inspect_model``.
-You can override the configuration path by exporting the ``INSPECTION_CONFIG``
-environment variable before running the module.
+Import ``inspect_experiment`` and call it directly, for example::
+
+    from src.evaluation.inspect_model import inspect_experiment
+
+    inspect_experiment(
+        experiment="Test6",
+        device="cuda",
+        print_weights=True,
+        capture=(
+            "input_proj",
+            "transformer_encoder.layers.0",
+            "transformer_encoder.layers.-1",
+            "prediction_head",
+        ),
+    )
+
+Advanced options remain available via keyword arguments while paths are
+validated eagerly to surface errors when misconfigured experiment folders are
+provided.
 """
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import torch
 import yaml
@@ -48,10 +50,10 @@ import yaml
 # Project setup
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+EXPERIMENTS_ROOT = PROJECT_ROOT / "outputs" / "experiments"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
 DEFAULT_CAPTURE_MODULES = [
     "input_proj",
     "transformer_encoder.layers.0",
@@ -127,13 +129,13 @@ class ModelParams:
 
 @dataclass
 class InspectionRequest:
-    """Container for an inspection run described in the YAML configuration."""
+    """Container describing what to inspect and how to do it."""
 
-    name: str
+    experiment: str
     checkpoint: Path
-    config_path: Optional[Path]
-    experiment_dir: Optional[Path]
-    params_path: Optional[Path]
+    config_path: Path
+    experiment_dir: Path
+    params_path: Path
     device: Optional[str]
     print_weights: bool
     split: str
@@ -158,131 +160,81 @@ def _load_params_override(path: Optional[Path]) -> Dict[str, object]:
     return cleaned
 
 
-def _resolve_checkpoint_from_dir(directory: Path) -> Path:
-    candidates = sorted(directory.glob("best_model*.pt"))
+def _resolve_experiment_dir(raw_value) -> Path:
+    value = str(raw_value).strip() if raw_value is not None else ""
+    if not value:
+        raise ValueError("Experiment name or path must be provided.")
+
+    path = Path(value)
+    if not path.is_absolute():
+        path = EXPERIMENTS_ROOT / path
+
+    resolved = path.resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(
+            f"Experiment directory '{resolved}' does not exist."
+        )
+
+    return resolved
+
+
+def _resolve_required_file(directory: Path, filename: str) -> Path:
+    path = directory / filename
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Expected file '{filename}' inside experiment directory '{directory}'."
+        )
+    return path
+
+
+def _locate_checkpoint(directory: Path) -> Path:
+    candidates = sorted(directory.glob("best_model_trial_*.pt"))
     if not candidates:
         raise FileNotFoundError(
-            f"Could not locate a 'best_model*.pt' checkpoint inside '{directory}'."
+            "No checkpoint matching 'best_model_trial_*.pt' was found inside "
+            f"'{directory}'."
         )
 
     if len(candidates) == 1:
         return candidates[0]
 
-    # Deterministic order: newest file wins.
-    newest = max(candidates, key=lambda path: path.stat().st_mtime)
-    return newest
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-def _resolve_override_path(checkpoint: Path, explicit: Optional[Path]) -> Optional[Path]:
-    if explicit is not None:
-        return explicit
+def build_inspection_request(
+    experiment: str,
+    *,
+    device: Optional[str] = None,
+    print_weights: bool = False,
+    split: str = "test",
+    batch_index: int = 0,
+    capture: Optional[Sequence[str]] = None,
+    run_forward: bool = True,
+) -> InspectionRequest:
+    """Construct an :class:`InspectionRequest` from simple keyword arguments."""
 
-    # Common naming convention from train.py when Optuna is enabled.
-    candidate = checkpoint.parent / "full_final_params.yaml"
-    if candidate.exists():
-        return candidate
+    experiment_dir = _resolve_experiment_dir(experiment)
+    checkpoint = _locate_checkpoint(experiment_dir)
+    config_path = _resolve_required_file(experiment_dir, "used_config.yaml")
+    params_path = _resolve_required_file(experiment_dir, "full_final_params.yaml")
 
-    candidate = checkpoint.parent / "best_params.yaml"
-    if candidate.exists():
-        return candidate
+    capture_modules = list(capture) if capture is not None else list(DEFAULT_CAPTURE_MODULES)
+    if not capture_modules:
+        raise ValueError("At least one module must be supplied for activation capture.")
 
-    return None
-
-
-def _resolve_path(value) -> Optional[Path]:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, Path):
-        path = value.expanduser()
-    else:
-        value_str = str(value).strip()
-        if not value_str:
-            return None
-        path = Path(value_str).expanduser()
-    if not path.is_absolute():
-        path = PROJECT_ROOT / path
-    return path
-
-
-def _load_inspection_requests(config: Config) -> List[InspectionRequest]:
-    evaluation_cfg = getattr(config, "evaluation", None)
-    inspection_cfg = getattr(evaluation_cfg, "inspection", None) if evaluation_cfg else None
-    if inspection_cfg is None:
-        return []
-
-    raw_runs = getattr(inspection_cfg, "runs", None)
-    if raw_runs is None:
-        raw_runs = [inspection_cfg]
-
-    requests: List[InspectionRequest] = []
-    for idx, raw in enumerate(raw_runs):
-        if raw is None:
-            continue
-
-        if isinstance(raw, dict):
-            data = raw
-        else:
-            data = dict(getattr(raw, "__dict__", {}))
-
-        name = str(data.get("name", f"run_{idx}"))
-        experiment_dir = _resolve_path(data.get("experiment_dir"))
-        checkpoint = _resolve_path(data.get("checkpoint"))
-        if experiment_dir is not None:
-            if not experiment_dir.exists():
-                raise FileNotFoundError(
-                    f"Inspection run '{name}' references missing directory '{experiment_dir}'."
-                )
-            if checkpoint is None:
-                checkpoint = _resolve_checkpoint_from_dir(experiment_dir)
-
-        if checkpoint is None:
-            raise ValueError(
-                f"Inspection run '{name}' is missing a checkpoint path or experiment directory."
-            )
-
-        config_path = _resolve_path(data.get("config"))
-        if config_path is None and experiment_dir is not None:
-            candidate = experiment_dir / "used_config.yaml"
-            if candidate.exists():
-                config_path = candidate
-        if config_path is not None and not config_path.exists():
-            raise FileNotFoundError(
-                f"Inspection run '{name}' references missing config file '{config_path}'."
-            )
-
-        params_path = _resolve_path(data.get("params"))
-        device = data.get("device")
-        print_weights = bool(data.get("print_weights", False))
-        split = str(data.get("split", "test"))
-        batch_index = int(data.get("batch_index", 0))
-        capture = data.get("capture", DEFAULT_CAPTURE_MODULES)
-        if isinstance(capture, str):
-            capture = [capture]
-        elif capture is None:
-            capture = DEFAULT_CAPTURE_MODULES
-        else:
-            capture = list(capture)
-        if not capture:
-            capture = []
-        run_forward = bool(data.get("forward_pass", data.get("forward", True)))
-
-        requests.append(
-            InspectionRequest(
-                name=name,
-                checkpoint=checkpoint,
-                config_path=config_path,
-                experiment_dir=experiment_dir,
-                params_path=params_path,
-                device=device,
-                print_weights=print_weights,
-                split=split,
-                batch_index=batch_index,
-                capture=list(capture),
-                run_forward=run_forward,
-            )
-        )
-
-    return requests
+    return InspectionRequest(
+        experiment=str(experiment),
+        checkpoint=checkpoint,
+        config_path=config_path,
+        experiment_dir=experiment_dir,
+        params_path=params_path,
+        device=device,
+        print_weights=bool(print_weights),
+        split=str(split),
+        batch_index=int(batch_index),
+        capture=capture_modules,
+        run_forward=bool(run_forward),
+    )
 
 
 def summarize_state_dict(state_dict: Mapping[str, torch.Tensor]) -> List[str]:
@@ -430,13 +382,12 @@ def _run_inspection(
     train_loader,
     val_loader,
     test_loader,
-):
-    print(f"\n=== Inspection: {request.name} ===")
+) -> Tuple[Optional[torch.Tensor], Dict[str, torch.Tensor]]:
+    print(f"\n=== Inspection: {request.experiment} ===")
     if not request.checkpoint.exists():
         raise FileNotFoundError(f"Checkpoint '{request.checkpoint}' does not exist.")
 
-    override_path = _resolve_override_path(request.checkpoint, request.params_path)
-    overrides = _load_params_override(override_path)
+    overrides = _load_params_override(request.params_path)
     params = ModelParams.from_config(config, overrides)
 
     state_dict = torch.load(request.checkpoint, map_location="cpu")
@@ -457,7 +408,7 @@ def _run_inspection(
 
     if not request.run_forward:
         print("Checkpoint loaded. Forward pass skipped per configuration.")
-        return
+        return None, {}
 
     loader = _select_loader(request.split, train_loader, val_loader, test_loader)
     if loader is None:
@@ -493,67 +444,63 @@ def _run_inspection(
         print("\nPredictions (scaled):")
         print(preds.detach().cpu().numpy())
 
-
-def _determine_config_path() -> Path:
-    env_path = os.environ.get("INSPECTION_CONFIG")
-    if env_path:
-        path = Path(env_path)
-    else:
-        path = DEFAULT_CONFIG_PATH
-    if not path.exists():
-        raise FileNotFoundError(f"Configuration file '{path}' does not exist.")
-    return path
+    return preds, activations
 
 
-def main():
-    config_path = _determine_config_path()
-    base_config = Config(config_path)
+def inspect_experiment(
+    experiment: str,
+    *,
+    device: Optional[str] = None,
+    print_weights: bool = False,
+    split: str = "test",
+    batch_index: int = 0,
+    capture: Optional[Sequence[str]] = None,
+    run_forward: bool = True,
+) -> Tuple[Optional[torch.Tensor], Dict[str, torch.Tensor]]:
+    """Inspect a trained experiment located under ``outputs/experiments``.
 
-    requests = _load_inspection_requests(base_config)
-    if not requests:
-        print(
-            "No inspection runs configured. Please add entries under "
-            "'evaluation.inspection.runs' in the YAML configuration."
-        )
-        return
+    Parameters mirror :func:`build_inspection_request` and are intentionally kept
+    simple – supply the experiment folder name or path and tweak optional flags
+    as needed.  Any missing files raise immediately to avoid silently falling
+    back to incorrect defaults.
 
-    env_cache: Dict[Path, tuple] = {}
-    resolved_base_path = config_path.resolve()
+    Returns
+    -------
+    Tuple[Optional[torch.Tensor], Dict[str, torch.Tensor]]
+        The predictions tensor (``None`` when ``run_forward`` is ``False``) and a
+        mapping of captured activation names to tensors on the CPU.
+    """
 
-    env_cache[resolved_base_path] = (
-        base_config,
-        _prepare_inspection_environment(base_config),
+    request = build_inspection_request(
+        experiment,
+        device=device,
+        print_weights=print_weights,
+        split=split,
+        batch_index=batch_index,
+        capture=capture,
+        run_forward=run_forward,
     )
 
-    for request in requests:
-        run_config_path = (request.config_path or config_path).resolve()
+    run_config = Config(request.config_path)
+    (
+        full_dataset,
+        train_loader,
+        val_loader,
+        test_loader,
+    ) = _prepare_inspection_environment(run_config)
 
-        if run_config_path not in env_cache:
-            run_config = Config(run_config_path)
-            env_cache[run_config_path] = (
-                run_config,
-                _prepare_inspection_environment(run_config),
-            )
-
-        run_config, env = env_cache[run_config_path]
-
-        (
-            full_dataset,
-            train_loader,
-            val_loader,
-            test_loader,
-        ) = env
-
-        _run_inspection(
-            request,
-            run_config,
-            full_dataset,
-            train_loader,
-            val_loader,
-            test_loader,
-        )
+    return _run_inspection(
+        request,
+        run_config,
+        full_dataset,
+        train_loader,
+        val_loader,
+        test_loader,
+    )
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        "Call inspect_experiment(experiment=...) from Python instead of using CLI arguments."
+    )
 
