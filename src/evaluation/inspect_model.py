@@ -15,8 +15,9 @@ section you may describe one or more inspection "runs", for example::
       inspection:
         runs:
           - name: optuna-best
-            checkpoint: outputs/experiments/Test6/best_model.pt
-            params: outputs/experiments/Test6/full_final_params.yaml
+            experiment_dir: outputs/experiments/Test6
+            # checkpoint: outputs/experiments/Test6/best_model.pt  # optional when experiment_dir is set
+            # params: outputs/experiments/Test6/full_final_params.yaml  # optional when co-located
             device: cuda
             print_weights: true
             split: test
@@ -130,6 +131,8 @@ class InspectionRequest:
 
     name: str
     checkpoint: Path
+    config_path: Optional[Path]
+    experiment_dir: Optional[Path]
     params_path: Optional[Path]
     device: Optional[str]
     print_weights: bool
@@ -153,6 +156,21 @@ def _load_params_override(path: Optional[Path]) -> Dict[str, object]:
             value = value[0]
         cleaned[key] = value
     return cleaned
+
+
+def _resolve_checkpoint_from_dir(directory: Path) -> Path:
+    candidates = sorted(directory.glob("best_model*.pt"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"Could not locate a 'best_model*.pt' checkpoint inside '{directory}'."
+        )
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Deterministic order: newest file wins.
+    newest = max(candidates, key=lambda path: path.stat().st_mtime)
+    return newest
 
 
 def _resolve_override_path(checkpoint: Path, explicit: Optional[Path]) -> Optional[Path]:
@@ -207,9 +225,30 @@ def _load_inspection_requests(config: Config) -> List[InspectionRequest]:
             data = dict(getattr(raw, "__dict__", {}))
 
         name = str(data.get("name", f"run_{idx}"))
+        experiment_dir = _resolve_path(data.get("experiment_dir"))
         checkpoint = _resolve_path(data.get("checkpoint"))
+        if experiment_dir is not None:
+            if not experiment_dir.exists():
+                raise FileNotFoundError(
+                    f"Inspection run '{name}' references missing directory '{experiment_dir}'."
+                )
+            if checkpoint is None:
+                checkpoint = _resolve_checkpoint_from_dir(experiment_dir)
+
         if checkpoint is None:
-            raise ValueError(f"Inspection run '{name}' is missing a checkpoint path.")
+            raise ValueError(
+                f"Inspection run '{name}' is missing a checkpoint path or experiment directory."
+            )
+
+        config_path = _resolve_path(data.get("config"))
+        if config_path is None and experiment_dir is not None:
+            candidate = experiment_dir / "used_config.yaml"
+            if candidate.exists():
+                config_path = candidate
+        if config_path is not None and not config_path.exists():
+            raise FileNotFoundError(
+                f"Inspection run '{name}' references missing config file '{config_path}'."
+            )
 
         params_path = _resolve_path(data.get("params"))
         device = data.get("device")
@@ -231,6 +270,8 @@ def _load_inspection_requests(config: Config) -> List[InspectionRequest]:
             InspectionRequest(
                 name=name,
                 checkpoint=checkpoint,
+                config_path=config_path,
+                experiment_dir=experiment_dir,
                 params_path=params_path,
                 device=device,
                 print_weights=print_weights,
@@ -466,9 +507,9 @@ def _determine_config_path() -> Path:
 
 def main():
     config_path = _determine_config_path()
-    config = Config(config_path)
+    base_config = Config(config_path)
 
-    requests = _load_inspection_requests(config)
+    requests = _load_inspection_requests(base_config)
     if not requests:
         print(
             "No inspection runs configured. Please add entries under "
@@ -476,17 +517,36 @@ def main():
         )
         return
 
-    (
-        full_dataset,
-        train_loader,
-        val_loader,
-        test_loader,
-    ) = _prepare_inspection_environment(config)
+    env_cache: Dict[Path, tuple] = {}
+    resolved_base_path = config_path.resolve()
+
+    env_cache[resolved_base_path] = (
+        base_config,
+        _prepare_inspection_environment(base_config),
+    )
 
     for request in requests:
+        run_config_path = (request.config_path or config_path).resolve()
+
+        if run_config_path not in env_cache:
+            run_config = Config(run_config_path)
+            env_cache[run_config_path] = (
+                run_config,
+                _prepare_inspection_environment(run_config),
+            )
+
+        run_config, env = env_cache[run_config_path]
+
+        (
+            full_dataset,
+            train_loader,
+            val_loader,
+            test_loader,
+        ) = env
+
         _run_inspection(
             request,
-            config,
+            run_config,
             full_dataset,
             train_loader,
             val_loader,
