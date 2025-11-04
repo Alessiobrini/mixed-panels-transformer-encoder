@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import torch
 import yaml
@@ -183,6 +184,198 @@ def _prepare_training_artifacts(config: Config) -> Dict[str, Any]:
     }
 
 
+def _clone_example_sequence(example: Dict[str, Any]) -> Dict[str, Any]:
+    cloned: Dict[str, Any] = {}
+    for key, value in example.items():
+        if isinstance(value, torch.Tensor):
+            cloned[key] = value.clone().detach()
+        else:
+            cloned[key] = value
+    return cloned
+
+
+def _select_example_sequence(data_artifacts: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+    dataset = data_artifacts["dataset"]
+    total_items = len(dataset)
+    if total_items == 0:
+        raise ValueError("Dataset is empty; cannot select an example sequence for inspection.")
+
+    test_indices: Iterable[int] = data_artifacts.get("test_indices") or []
+    try:
+        example_index = int(next(iter(test_indices)))
+    except StopIteration:
+        example_index = 0
+
+    example_index = max(0, min(example_index, total_items - 1))
+    return example_index, dataset[example_index]
+
+
+def _batch_from_example(example: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]:
+    batch = {}
+    for key in ("value", "var_id", "freq_id"):
+        tensor = example[key]
+        if tensor.dim() == 1:
+            tensor = tensor.unsqueeze(0)
+        batch[key] = tensor.to(device)
+    if "target" in example:
+        target = example["target"]
+        if target.dim() == 0:
+            target = target.unsqueeze(0)
+        batch["target"] = target.to(device)
+    return batch
+
+
+def _shape_to_str(shape: torch.Size) -> str:
+    return " × ".join(str(dim) for dim in shape)
+
+
+def _trace_model_flow(model: torch.nn.Module, batch: Dict[str, torch.Tensor]) -> List[Dict[str, Any]]:
+    steps: List[Dict[str, Any]] = []
+    with torch.no_grad():
+        value = batch["value"]
+        var_id = batch["var_id"]
+        freq_id = batch["freq_id"]
+
+        value_unsqueezed = value.unsqueeze(-1)
+        steps.append({"op": "value.unsqueeze(-1)", "shape": tuple(value_unsqueezed.shape)})
+
+        var_emb = model.var_embedding(var_id)
+        steps.append({"op": "var_embedding(var_id)", "shape": tuple(var_emb.shape)})
+
+        freq_emb = model.freq_embedding(freq_id)
+        steps.append({"op": "freq_embedding(freq_id)", "shape": tuple(freq_emb.shape)})
+
+        z = torch.cat([value_unsqueezed, var_emb, freq_emb], dim=-1)
+        steps.append({"op": "concat([value, var_emb, freq_emb])", "shape": tuple(z.shape)})
+
+        z_proj = model.input_proj(z)
+        steps.append({"op": "input_proj", "shape": tuple(z_proj.shape)})
+
+        z_proj = model.z_proj_norm(z_proj)
+        steps.append({"op": "z_proj_norm", "shape": tuple(z_proj.shape)})
+
+        if model.positional_encoding_enabled and model.positional_encoding is not None:
+            pos_enc = model._get_positional_encoding(z_proj)
+            pos_enc = model.pos_enc_norm(pos_enc)
+            steps.append({"op": "positional_encoding", "shape": tuple(pos_enc.shape)})
+            z_proj = z_proj + pos_enc
+            steps.append({"op": "add(positional_encoding)", "shape": tuple(z_proj.shape)})
+
+        encoded = model.transformer_encoder(z_proj)
+        steps.append({"op": "transformer_encoder", "shape": tuple(encoded.shape)})
+
+        pooled = encoded.mean(dim=1)
+        steps.append({"op": "mean_pool", "shape": tuple(pooled.shape)})
+
+        pred = model.prediction_head(pooled)
+        steps.append({"op": "prediction_head", "shape": tuple(pred.shape)})
+
+    return steps
+
+
+def _register_encoder_hooks(
+    encoder: torch.nn.Module, storage: List[Dict[str, Any]]
+) -> List[torch.utils.hooks.RemovableHandle]:
+    handles: List[torch.utils.hooks.RemovableHandle] = []
+    layers = getattr(encoder, "layers", None)
+    if layers is None:
+        return handles
+
+    for idx, layer in enumerate(layers):
+        def _make_hook(index: int):
+            def hook(module: torch.nn.Module, inputs: Tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
+                storage.append({
+                    "layer": index,
+                    "tensor": output.detach().cpu(),
+                    "shape": tuple(output.shape),
+                })
+
+            return hook
+
+        handle = layer.register_forward_hook(_make_hook(idx))
+        handles.append(handle)
+    return handles
+
+
+@contextmanager
+def _capture_attention_weights(encoder: torch.nn.Module, storage: List[torch.Tensor]):
+    patched: List[Tuple[torch.nn.Module, Any]] = []
+    layers = getattr(encoder, "layers", None)
+    if layers is None:
+        yield
+        return
+
+    try:
+        for layer in layers:
+            mha = getattr(layer, "self_attn", None)
+            if mha is None:
+                continue
+
+            original_forward = mha.forward
+
+            def make_wrapped(original):
+                def wrapped(query, key, value, **kwargs):
+                    kwargs["need_weights"] = True
+                    kwargs["average_attn_weights"] = False
+                    attn_output, attn_weights = original(query, key, value, **kwargs)
+                    storage.append(attn_weights.detach().cpu())
+                    return attn_output, attn_weights
+
+                return wrapped
+
+            mha.forward = make_wrapped(original_forward)
+            patched.append((mha, original_forward))
+
+        yield
+    finally:
+        for module, original in patched:
+            module.forward = original
+
+
+def _collect_attention_and_hidden_states(
+    model: torch.nn.Module,
+    batch: Dict[str, torch.Tensor],
+) -> Tuple[List[torch.Tensor], List[Dict[str, Any]]]:
+    encoder = getattr(model, "transformer_encoder", None)
+    if encoder is None:
+        return [], []
+
+    hidden_states: List[Dict[str, Any]] = []
+    attention_matrices: List[torch.Tensor] = []
+
+    handles = _register_encoder_hooks(encoder, hidden_states)
+    try:
+        with _capture_attention_weights(encoder, attention_matrices):
+            with torch.no_grad():
+                model(
+                    value=batch["value"],
+                    var_id=batch["var_id"],
+                    freq_id=batch["freq_id"],
+                )
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    hidden_states.sort(key=lambda entry: entry["layer"])
+    return attention_matrices, hidden_states
+
+
+def _inspect_example_sequence(
+    model: torch.nn.Module,
+    example: Dict[str, Any],
+    device: torch.device,
+) -> Dict[str, Any]:
+    batch = _batch_from_example(example, device)
+    flow = _trace_model_flow(model, batch)
+    attention_matrices, hidden_states = _collect_attention_and_hidden_states(model, batch)
+
+    return {
+        "forward_flow": flow,
+        "attention_matrices": attention_matrices,
+        "encoder_hidden_states": hidden_states,
+    }
+
+
 def reload_from_config(
     config_path: Optional[str] = None, device: Optional[str] = None
 ) -> Tuple[torch.nn.Module, Config, Path, Dict[str, Any]]:
@@ -249,6 +442,10 @@ def reload_from_config(
     model.to(target_device)
     model.eval()
 
+    example_index, example_sequence = _select_example_sequence(data_artifacts)
+    cloned_example = _clone_example_sequence(example_sequence)
+    inspection = _inspect_example_sequence(model, cloned_example, target_device)
+
     meta = {
         "experiment_dir": str(experiment_dir),
         "config_path": str(cfg_path),
@@ -257,6 +454,9 @@ def reload_from_config(
         "applied_overrides": applied_overrides,
         "device": str(target_device),
         "data_artifacts": data_artifacts,
+        "example_sequence_index": example_index,
+        "example_sequence": cloned_example,
+        "example_inspection": inspection,
     }
 
     return model, run_config, checkpoint_path, meta
@@ -266,3 +466,35 @@ if __name__ == "__main__":
     model, _, checkpoint, meta = reload_from_config()
     print(f"Checkpoint: {checkpoint}")
     print(f"Device: {meta['device']}")
+
+    inspection = meta.get("example_inspection", {})
+    example_index = meta.get("example_sequence_index")
+    if example_index is not None:
+        print(f"Example sequence index: {example_index}")
+
+    forward_flow = inspection.get("forward_flow", [])
+    if forward_flow:
+        print("\nForward pass operation order (single-sequence view):")
+        for step in forward_flow:
+            op = step["op"]
+            shape = _shape_to_str(torch.Size(step["shape"]))
+            print(f"  - {op}: {shape}")
+
+    attention_matrices = inspection.get("attention_matrices", [])
+    if attention_matrices:
+        print("\nAttention matrices (post-softmax) captured per encoder layer:")
+        for layer_idx, matrix in enumerate(attention_matrices):
+            shape = _shape_to_str(matrix.shape)
+            print(f"  - Layer {layer_idx}: {shape} (batch × heads × tgt_len × src_len)")
+    else:
+        print("\nAttention matrices: not available (attention disabled or no encoder layers).")
+
+    hidden_states = inspection.get("encoder_hidden_states", [])
+    if hidden_states:
+        print("\nEncoder hidden states after each layer:")
+        for entry in hidden_states:
+            layer = entry["layer"]
+            shape = _shape_to_str(torch.Size(entry["shape"]))
+            print(f"  - Layer {layer}: {shape}")
+    else:
+        print("\nEncoder hidden states: no layers recorded.")
