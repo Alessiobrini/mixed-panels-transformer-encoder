@@ -463,9 +463,26 @@ def reload_from_config(
 
 
 if __name__ == "__main__":
-    model, _, checkpoint, meta = reload_from_config()
+    model, run_config, checkpoint, meta = reload_from_config()
     print(f"Checkpoint: {checkpoint}")
     print(f"Device: {meta['device']}")
+    
+    # Compute context vector length based on config
+    context_days = run_config.data.context_days
+    n_monthly = len(run_config.features.monthly_vars)
+    n_quarterly = len(run_config.features.quarterly_vars)
+    
+    # Each year has 12 months and 4 quarters
+    years_fraction = context_days / 360
+    context_length = years_fraction * (n_monthly * 12 + n_quarterly * 4)
+    
+    print(
+        f"Context vector length is {context_length:.0f}, "
+        f"based on a context window of {context_days} days "
+        f"({years_fraction:.2f} years), with {n_monthly} monthly "
+        f"and {n_quarterly} quarterly variables."
+    )
+
 
     inspection = meta.get("example_inspection", {})
     example_index = meta.get("example_sequence_index")
