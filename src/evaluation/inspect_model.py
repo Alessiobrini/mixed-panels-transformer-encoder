@@ -130,6 +130,26 @@ def _as_bool(value: Any) -> bool:
     return bool(value)
 
 
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, float) and value != value:  # NaN check
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _resolve_experiment_dir(experiment_value: Any) -> Path:
     if experiment_value is None:
         raise ValueError("Config must define 'evaluation.experiment'.")
@@ -469,6 +489,45 @@ def reload_from_config(
     )
     target_row = dataset.df.loc[target_index, context_columns]
 
+    inv_var_map = {idx: name for name, idx in dataset.var_map.items()}
+    inv_freq_map = {idx: name for name, idx in dataset.freq_map.items()}
+
+    example = cloned_example
+    var_names = [inv_var_map.get(int(i), int(i)) for i in example["var_id"]]
+    freq_names = [inv_freq_map.get(int(i), int(i)) for i in example["freq_id"]]
+    time_ids = example.get("time_id")
+    time_ids_list = time_ids.tolist() if hasattr(time_ids, "tolist") else []
+
+    context_token_metadata: Dict[int, Dict[str, Any]] = {}
+    for pos, row in enumerate(context_rows.itertuples(index=False)):
+        row_dict = row._asdict()
+        context_token_metadata[pos] = {
+            "row_index": _safe_int(row_dict.get("row_index")),
+            "time": row_dict.get(dataset.time_column),
+            "time_id_dataframe": _safe_int(row_dict.get("time_id")),
+            "time_id_tensor": _safe_int(time_ids_list[pos])
+            if time_ids_list and pos < len(time_ids_list)
+            else None,
+            "variable": var_names[pos] if pos < len(var_names) else row_dict.get(dataset.variable_column),
+            "frequency": freq_names[pos] if pos < len(freq_names) else row_dict.get(dataset.freq_column),
+            "value": _safe_float(row_dict.get("scaled_value")),
+            "original_value": _safe_float(row_dict.get(dataset.value_column)),
+            "var_id": _safe_int(row_dict.get("var_id")),
+            "freq_id": _safe_int(row_dict.get("freq_id")),
+        }
+
+    target_summary = {
+        "row_index": _safe_int(target_index),
+        "time": target_row.get(dataset.time_column),
+        "time_id": _safe_int(target_row.get("time_id")),
+        "variable": target_row.get(dataset.variable_column),
+        "frequency": target_row.get(dataset.freq_column),
+        "value": _safe_float(target_row.get("scaled_value")),
+        "original_value": _safe_float(target_row.get(dataset.value_column)),
+        "var_id": _safe_int(target_row.get("var_id")),
+        "freq_id": _safe_int(target_row.get("freq_id")),
+    }
+
     meta = {
         "experiment_dir": str(experiment_dir),
         "config_path": str(cfg_path),
@@ -484,6 +543,8 @@ def reload_from_config(
         "example_target_index": target_index,
         "example_context_rows": context_rows,
         "example_target_row": target_row.to_dict(),
+        "example_context_token_metadata": context_token_metadata,
+        "example_target_summary": target_summary,
     }
 
     return model, run_config, checkpoint_path, meta
@@ -544,53 +605,17 @@ if __name__ == "__main__":
         print("\nEncoder hidden states: no layers recorded.")
         
         
-    # Retrive information about the update sequence
-    dataset = meta["data_artifacts"]["dataset"]
-    inv_var_map = {idx: name for name, idx in dataset.var_map.items()}
-    inv_freq_map = {idx: name for name, idx in dataset.freq_map.items()}
-
-    example = meta["example_sequence"]
-    var_names = [inv_var_map[int(i)] for i in example["var_id"]]
-    freq_names = [inv_freq_map[int(i)] for i in example["freq_id"]]
-    time_ids = example["time_id"].tolist()
-
-    context_rows = meta.get("example_context_rows")
-    if context_rows is not None:
-        print("\nContext window tokens (dataset row index, ids, and decoded labels):")
-        for pos, (row, var_name, freq_name, time_id_tensor) in enumerate(
-            zip(
-                context_rows.itertuples(index=False),
-                var_names,
-                freq_names,
-                time_ids,
-            )
-        ):
-            print(
-                "  - pos={pos:3d} | row_index={row.row_index:5d} | time_id(df)={row.time_id:5d} | "
-                "time_id(tensor)={tensor_id:5d} | var={var} | freq={freq} | value={value:.4f}"
-                .format(
-                    pos=pos,
-                    row=row,
-                    tensor_id=int(time_id_tensor),
-                    var=var_name,
-                    freq=freq_name,
-                    value=float(row.scaled_value),
-                )
-            )
-
-    target_row = meta.get("example_target_row")
-    target_index = meta.get("example_target_index")
-    if target_row is not None and target_index is not None:
-        print("\nTarget token (what the model predicts):")
+    context_token_metadata = meta.get("example_context_token_metadata")
+    if context_token_metadata:
         print(
-            "  - row_index={row_idx} | time={time} | time_id={time_id} | var={var} | freq={freq} | value={value:.4f}"
-            .format(
-                row_idx=target_index,
-                time=target_row.get(dataset.time_column),
-                time_id=target_row.get("time_id"),
-                var=target_row.get(dataset.variable_column),
-                freq=target_row.get(dataset.freq_column),
-                value=float(target_row.get("scaled_value", float("nan"))),
-            )
+            "\nContext window token metadata stored under meta['example_context_token_metadata'] "
+            "(indexed by sequence position)."
+        )
+
+    target_summary = meta.get("example_target_summary")
+    if target_summary:
+        print(
+            "Target token metadata stored under meta['example_target_summary'] with the "
+            "same structure."
         )
 
