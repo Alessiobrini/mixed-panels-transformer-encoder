@@ -515,3 +515,23 @@ if __name__ == "__main__":
             print(f"  - Layer {layer}: {shape}")
     else:
         print("\nEncoder hidden states: no layers recorded.")
+        
+        
+    # Retrive information about the update sequence
+    dataset = meta["data_artifacts"]["dataset"]
+    inv_var_map = {idx: name for name, idx in dataset.var_map.items()}
+    inv_freq_map = {idx: name for name, idx in dataset.freq_map.items()}
+    
+    
+    example = meta["example_sequence"]
+    var_names = [inv_var_map[int(i)] for i in example["var_id"]]
+    freq_names = [inv_freq_map[int(i)] for i in example["freq_id"]]
+    time_ids = example["time_id"].tolist()
+    
+    ctx_idx = dataset.sequence_windows[meta["example_sequence_index"]]["context_idx"]
+    original_rows = dataset.df.loc[ctx_idx, [dataset.time_column,
+                                             dataset.variable_column,
+                                             dataset.freq_column,
+                                             dataset.value_column,
+                                             'scaled_value']]
+
