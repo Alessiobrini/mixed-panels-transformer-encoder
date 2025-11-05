@@ -446,6 +446,29 @@ def reload_from_config(
     cloned_example = _clone_example_sequence(example_sequence)
     inspection = _inspect_example_sequence(model, cloned_example, target_device)
 
+    dataset = data_artifacts["dataset"]
+    sequence_window = dataset.sequence_windows[example_index]
+    context_indices = sequence_window["context_idx"].tolist()
+    target_index = int(sequence_window["target_idx"])
+
+    context_columns = [
+        dataset.time_column,
+        dataset.variable_column,
+        dataset.freq_column,
+        dataset.value_column,
+        "scaled_value",
+        "time_id",
+        "var_id",
+        "freq_id",
+    ]
+
+    context_rows = (
+        dataset.df.loc[sequence_window["context_idx"], context_columns]
+        .reset_index()
+        .rename(columns={"index": "row_index"})
+    )
+    target_row = dataset.df.loc[target_index, context_columns]
+
     meta = {
         "experiment_dir": str(experiment_dir),
         "config_path": str(cfg_path),
@@ -457,6 +480,10 @@ def reload_from_config(
         "example_sequence_index": example_index,
         "example_sequence": cloned_example,
         "example_inspection": inspection,
+        "example_context_indices": context_indices,
+        "example_target_index": target_index,
+        "example_context_rows": context_rows,
+        "example_target_row": target_row.to_dict(),
     }
 
     return model, run_config, checkpoint_path, meta
@@ -521,17 +548,49 @@ if __name__ == "__main__":
     dataset = meta["data_artifacts"]["dataset"]
     inv_var_map = {idx: name for name, idx in dataset.var_map.items()}
     inv_freq_map = {idx: name for name, idx in dataset.freq_map.items()}
-    
-    
+
     example = meta["example_sequence"]
     var_names = [inv_var_map[int(i)] for i in example["var_id"]]
     freq_names = [inv_freq_map[int(i)] for i in example["freq_id"]]
     time_ids = example["time_id"].tolist()
-    
-    ctx_idx = dataset.sequence_windows[meta["example_sequence_index"]]["context_idx"]
-    original_rows = dataset.df.loc[ctx_idx, [dataset.time_column,
-                                             dataset.variable_column,
-                                             dataset.freq_column,
-                                             dataset.value_column,
-                                             'scaled_value']]
+
+    context_rows = meta.get("example_context_rows")
+    if context_rows is not None:
+        print("\nContext window tokens (dataset row index, ids, and decoded labels):")
+        for pos, (row, var_name, freq_name, time_id_tensor) in enumerate(
+            zip(
+                context_rows.itertuples(index=False),
+                var_names,
+                freq_names,
+                time_ids,
+            )
+        ):
+            print(
+                "  - pos={pos:3d} | row_index={row.row_index:5d} | time_id(df)={row.time_id:5d} | "
+                "time_id(tensor)={tensor_id:5d} | var={var} | freq={freq} | value={value:.4f}"
+                .format(
+                    pos=pos,
+                    row=row,
+                    tensor_id=int(time_id_tensor),
+                    var=var_name,
+                    freq=freq_name,
+                    value=float(row.scaled_value),
+                )
+            )
+
+    target_row = meta.get("example_target_row")
+    target_index = meta.get("example_target_index")
+    if target_row is not None and target_index is not None:
+        print("\nTarget token (what the model predicts):")
+        print(
+            "  - row_index={row_idx} | time={time} | time_id={time_id} | var={var} | freq={freq} | value={value:.4f}"
+            .format(
+                row_idx=target_index,
+                time=target_row.get(dataset.time_column),
+                time_id=target_row.get("time_id"),
+                var=target_row.get(dataset.variable_column),
+                freq=target_row.get(dataset.freq_column),
+                value=float(target_row.get("scaled_value", float("nan"))),
+            )
+        )
 
