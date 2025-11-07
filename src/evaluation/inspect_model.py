@@ -214,19 +214,22 @@ def _clone_example_sequence(example: Dict[str, Any]) -> Dict[str, Any]:
     return cloned
 
 
-def _select_example_sequence(data_artifacts: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+def _select_example_sequence(
+    data_artifacts: Dict[str, Any], example_index: Optional[int] = None
+) -> Tuple[int, Dict[str, Any]]:
     dataset = data_artifacts["dataset"]
     total_items = len(dataset)
     if total_items == 0:
         raise ValueError("Dataset is empty; cannot select an example sequence for inspection.")
 
-    test_indices: Iterable[int] = data_artifacts.get("test_indices") or []
-    try:
-        example_index = int(next(iter(test_indices)))
-    except StopIteration:
-        example_index = 0
+    if example_index is None:
+        test_indices: Iterable[int] = data_artifacts.get("test_indices") or []
+        try:
+            example_index = int(next(iter(test_indices)))
+        except StopIteration:
+            example_index = 0
 
-    example_index = max(0, min(example_index, total_items - 1))
+    example_index = max(0, min(int(example_index), total_items - 1))
     return example_index, dataset[example_index]
 
 
@@ -397,9 +400,22 @@ def _inspect_example_sequence(
 
 
 def reload_from_config(
-    config_path: Optional[str] = None, device: Optional[str] = None
+    config_path: Optional[str] = None,
+    device: Optional[str] = None,
+    example_sequence_index: Optional[int] = None,
 ) -> Tuple[torch.nn.Module, Config, Path, Dict[str, Any]]:
-    """Reload a trained model specified by ``evaluation.experiment``."""
+    """Reload a trained model specified by ``evaluation.experiment``.
+
+    Parameters
+    ----------
+    config_path:
+        Optional path to the configuration file used to locate the experiment.
+    device:
+        Optional torch device string. Defaults to CUDA if available, otherwise CPU.
+    example_sequence_index:
+        When provided, selects the specific sequence window from the dataset to
+        inspect. If ``None`` (default) the first test index (or 0) is used.
+    """
 
     cfg_path = Path(config_path) if config_path else PROJECT_ROOT / "src" / "config" / "cfg.yaml"
     cfg_path = _require(cfg_path.resolve())
@@ -462,7 +478,9 @@ def reload_from_config(
     model.to(target_device)
     model.eval()
 
-    example_index, example_sequence = _select_example_sequence(data_artifacts)
+    example_index, example_sequence = _select_example_sequence(
+        data_artifacts, example_sequence_index
+    )
     cloned_example = _clone_example_sequence(example_sequence)
     inspection = _inspect_example_sequence(model, cloned_example, target_device)
 
