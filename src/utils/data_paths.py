@@ -25,7 +25,13 @@ def is_simulation_enabled(config) -> bool:
 
 
 def use_quarterly_only_predictors(config) -> bool:
-    """Return ``True`` if simulation should ignore monthly predictors."""
+    """Return ``True`` if the run should ignore monthly predictors."""
+
+    features = getattr(config, "features", None)
+    if features is not None:
+        feature_flag = getattr(features, "use_y_only_predictors", None)
+        if feature_flag is not None:
+            return bool(feature_flag)
 
     if not is_simulation_enabled(config):
         return False
@@ -87,9 +93,11 @@ def _resolve_sim_counts(config) -> Tuple[int, int]:
 def resolve_variable_lists(config, project_root: Path) -> Tuple[List[str], List[str]]:
     """Return ordered monthly and quarterly variable lists for the active run."""
 
+    quarterly_only = use_quarterly_only_predictors(config)
+
     if is_simulation_enabled(config):
         n_monthly, n_quarterly = _resolve_sim_counts(config)
-        monthly_vars = [f"X{i + 1}" for i in range(n_monthly)]
+        monthly_vars = [] if quarterly_only else [f"X{i + 1}" for i in range(n_monthly)]
         quarterly_vars = [f"Y{j + 1}" for j in range(n_quarterly)]
         return monthly_vars, quarterly_vars
 
@@ -102,6 +110,9 @@ def resolve_variable_lists(config, project_root: Path) -> Tuple[List[str], List[
     else:
         monthly_vars = list(config.features.monthly_vars)
         quarterly_vars = list(config.features.quarterly_vars)
+
+    if quarterly_only:
+        monthly_vars = []
 
     return monthly_vars, quarterly_vars
 

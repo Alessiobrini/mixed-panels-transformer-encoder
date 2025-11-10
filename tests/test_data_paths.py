@@ -2,6 +2,10 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("pandas")
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.utils.data_paths import (
@@ -18,6 +22,7 @@ def build_config(simulation=None, features=None):
         "quarterly_vars": [],
         "target": None,
         "all_monthly": False,
+        "use_y_only_predictors": None,
     }
     if features:
         feat_defaults.update(features)
@@ -49,6 +54,19 @@ def test_use_quarterly_only_predictors_respects_explicit_flag():
             "use_y_only_predictors": True,
             "p_x": 5,
             "p_y": 2,
+        },
+    )
+    assert use_quarterly_only_predictors(config) is True
+
+
+def test_use_quarterly_only_predictors_respects_feature_flag():
+    config = build_config(
+        simulation={"simulate": False},
+        features={
+            "monthly_vars": ["RPI"],
+            "quarterly_vars": ["GDP"],
+            "target": "GDP",
+            "use_y_only_predictors": True,
         },
     )
     assert use_quarterly_only_predictors(config) is True
