@@ -108,6 +108,9 @@ if __name__ == "__main__":
         quarterly_vars
     )
 
+    if config.features.use_y_only_predictors:
+        long_df = long_df[long_df['Frequency']=='Q']
+        
     print(long_df.head())
 
     # Save with dynamic file name

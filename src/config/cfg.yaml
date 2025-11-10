@@ -38,6 +38,7 @@ simulation:
 
 features:
   target:         UNRATE
+  use_y_only_predictors: false
   monthly_vars:
     - RPI
     - INDPRO
