@@ -146,6 +146,10 @@ evaluation:
   true_col: target
   pred_col: predicted
   experiment: 'GDPC1_2025-09-26'  # populate with inspection runs for src/evaluation/inspect_model.py
+
+retraining:
+  ablation:
+    base_dates: {}  # mapping target -> YYYY-MM-DD used for base empirical experiments
   
 
 
