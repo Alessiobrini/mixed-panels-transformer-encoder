@@ -473,8 +473,8 @@ def run_optuna(config, csv_path, exp_path, suffix):
         'lr': best_params.get('lr', config.training.lr),
         'd_freq': best_params.get('d_freq', default_d_freq if default_d_freq is not None else emb_dim(tf)),
         'd_var': best_params.get('d_var', default_d_var if default_d_var is not None else emb_dim(tv)),
-        'dim_feedforward': best_params.get('dim_feedforward', 2048),
-        'activation': best_params.get('activation', 'relu'),
+        'dim_feedforward': best_params.get('dim_feedforward', config.model.transformer.dim_feedforward),
+        'activation': best_params.get('activation', config.model.transformer.activation),
 
     }
 
