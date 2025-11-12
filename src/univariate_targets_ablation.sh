@@ -148,7 +148,8 @@ features_cfg = cfg.setdefault("features", {})
 training_cfg = cfg.setdefault("training", {})
 simulation_cfg = cfg.setdefault("simulation", {})
 model_cfg = cfg.setdefault("model", {})
-transformer_cfg = model_cfg.setdefault("transformer", {})
+model_cfg["transformer"] = {}
+transformer_cfg = model_cfg["transformer"]
 hyperopt_cfg = cfg.setdefault("hyperopt", {})
 retraining_cfg = cfg.setdefault("retraining", {})
 ablation_cfg = retraining_cfg.setdefault("ablation", {})
@@ -170,8 +171,17 @@ if not used_config.exists():
         f"Expected used_config.yaml in {used_config.parent}, but it was not found."
     )
 
+full_final_params = experiments_dir / base_experiment_name / "full_final_params.yaml"
+if not full_final_params.exists():
+    raise FileNotFoundError(
+        f"Expected full_final_params.yaml in {full_final_params.parent}, but it was not found."
+    )
+
 with used_config.open("r", encoding="utf-8") as f:
     base_cfg = yaml.safe_load(f) or {}
+
+with full_final_params.open("r", encoding="utf-8") as f:
+    full_params_cfg = yaml.safe_load(f) or {}
 
 base_training = base_cfg.get("training", {})
 for key in ["batch_size", "epochs", "lr", "patience", "seed"]:
@@ -190,8 +200,9 @@ for key in ["simulate", "use_y_only_predictors"]:
 
 simulation_cfg["simulate"] = False
 
-base_model = base_cfg.get("model", {})
-base_transformer = base_model.get("transformer", {})
+base_model_params = full_params_cfg.get("model", {})
+base_transformer_params = base_model_params.get("transformer", {})
+
 for key in [
     "d_model",
     "nhead",
@@ -201,12 +212,19 @@ for key in [
     "dim_feedforward",
     "activation",
     "dropout",
+]:
+    if key in base_transformer_params:
+        transformer_cfg[key] = base_transformer_params[key]
+
+for key in [
     "use_nonlinearity",
     "use_attention",
     "use_positional_encoding",
 ]:
-    if key in base_transformer:
-        transformer_cfg[key] = base_transformer[key]
+    if key in base_transformer_params:
+        transformer_cfg[key] = base_transformer_params[key]
+    else:
+        transformer_cfg[key] = True
 
 training_cfg["optimize"] = True
 
