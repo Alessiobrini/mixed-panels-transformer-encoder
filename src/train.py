@@ -272,12 +272,12 @@ def objective(trial, config, csv_path, exp_path, suffix):
         'dim_feedforward': (
             trial.suggest_categorical('dim_feedforward', [int(x) for x in config.hyperopt.dim_feedforward])
             if hasattr(config.hyperopt, 'dim_feedforward')
-            else 2048
+            else config.model.transformer.dim_feedforward
         ),
         'activation': (
             trial.suggest_categorical('activation', config.hyperopt.activation)
             if hasattr(config.hyperopt, 'activation')
-            else 'relu'
+            else config.model.transformer.activation
         )
 
     }
@@ -477,7 +477,7 @@ def run_optuna(config, csv_path, exp_path, suffix):
         'activation': best_params.get('activation', config.model.transformer.activation),
 
     }
-
+    
     model = build_model(
         full_dataset, config,
         complete_params['d_model'], complete_params['nhead'],
