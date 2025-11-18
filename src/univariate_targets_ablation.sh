@@ -200,31 +200,14 @@ for key in ["simulate", "use_y_only_predictors"]:
 
 simulation_cfg["simulate"] = False
 
-base_model_params = full_params_cfg.get("model", {})
-base_transformer_params = base_model_params.get("transformer", {})
+base_transformer_params = full_params_cfg
 
-for key in [
-    "d_model",
-    "nhead",
-    "num_layers",
-    "d_freq",
-    "d_var",
-    "dim_feedforward",
-    "activation",
-    "dropout",
-]:
-    if key in base_transformer_params:
-        transformer_cfg[key] = base_transformer_params[key]
+for k, v in base_transformer_params.items():
+    transformer_cfg[k] = v
 
-for key in [
-    "use_nonlinearity",
-    "use_attention",
-    "use_positional_encoding",
-]:
-    if key in base_transformer_params:
-        transformer_cfg[key] = base_transformer_params[key]
-    else:
-        transformer_cfg[key] = True
+# Ensure the three booleans always exist
+for k in ["use_nonlinearity", "use_attention", "use_positional_encoding"]:
+    transformer_cfg.setdefault(k, True)
 
 training_cfg["optimize"] = True
 
