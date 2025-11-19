@@ -147,6 +147,7 @@ with config_path.open("r", encoding="utf-8") as f:
 features_cfg = cfg.setdefault("features", {})
 training_cfg = cfg.setdefault("training", {})
 simulation_cfg = cfg.setdefault("simulation", {})
+data_cfg = cfg.setdefault("data", {})
 model_cfg = cfg.setdefault("model", {})
 model_cfg["transformer"] = {}
 transformer_cfg = model_cfg["transformer"]
@@ -187,6 +188,11 @@ base_training = base_cfg.get("training", {})
 for key in ["batch_size", "epochs", "lr", "patience", "seed"]:
     if key in base_training:
         training_cfg[key] = base_training[key]
+
+base_data = base_cfg.get("data", {})
+for key in ["context_days", "train_ratio", "val_ratio"]:
+    if key in base_data:
+        data_cfg[key] = base_data[key]
 
 base_features = base_cfg.get("features", {})
 for key in ["monthly_vars", "quarterly_vars", "all_monthly"]:
