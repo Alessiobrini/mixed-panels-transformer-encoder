@@ -1,6 +1,8 @@
 """Reload a trained Mixed-Frequency Transformer from an experiment folder."""
 from __future__ import annotations
 
+import json
+import numbers
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -383,6 +385,34 @@ def _collect_attention_and_hidden_states(
     return attention_matrices, hidden_states
 
 
+def _to_json_serializable(value: Any) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.tolist()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _to_json_serializable(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_serializable(item) for item in value]
+    if isinstance(value, numbers.Number) or isinstance(value, (str, bool)) or value is None:
+        return value
+    if hasattr(value, "tolist") and not isinstance(value, (bytes, bytearray, str)):
+        try:
+            return _to_json_serializable(value.tolist())
+        except Exception:
+            pass
+    if hasattr(value, "to_dict"):
+        try:
+            return _to_json_serializable(value.to_dict())
+        except Exception:
+            pass
+    return repr(value)
+
+
+def _build_schema(meta: Dict[str, Any]) -> Dict[str, str]:
+    return {key: value.__class__.__name__ for key, value in meta.items()}
+
+
 def _inspect_example_sequence(
     model: torch.nn.Module,
     example: Dict[str, Any],
@@ -564,6 +594,20 @@ def reload_from_config(
         "example_context_token_metadata": context_token_metadata,
         "example_target_summary": target_summary,
     }
+
+    inspection_dir = experiment_dir / "model_inspection"
+    inspection_dir.mkdir(parents=True, exist_ok=True)
+
+    meta_path = inspection_dir / "meta.json"
+    serializable_meta = _to_json_serializable(meta)
+    meta_path.write_text(json.dumps(serializable_meta, indent=2), encoding="utf-8")
+
+    schema_path = inspection_dir / "schema.json"
+    schema = _build_schema(meta)
+    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+
+    model_structure_path = inspection_dir / "model_structure.txt"
+    model_structure_path.write_text(str(model), encoding="utf-8")
 
     return model, run_config, checkpoint_path, meta
 
