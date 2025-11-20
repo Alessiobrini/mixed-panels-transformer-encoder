@@ -18,6 +18,11 @@ EXPERIMENTS = [
     "example_experiment",
 ]
 
+# Alternatively, set BASE_DATE to process every experiment folder containing this
+# substring in its name (e.g., "2024-07-01"). When BASE_DATE is provided,
+# EXPERIMENTS is ignored.
+BASE_DATE: str | None = None
+
 
 def _prepare_temp_config(experiment: str) -> Path:
     cfg_data = yaml.safe_load(DEFAULT_CONFIG.read_text(encoding="utf-8")) or {}
@@ -33,9 +38,34 @@ def _prepare_temp_config(experiment: str) -> Path:
         temp_file.close()
 
 
+def _resolve_experiment_names() -> list[str]:
+    if BASE_DATE is None:
+        return EXPERIMENTS
+
+    experiments_dir = PROJECT_ROOT / "outputs" / "experiments"
+    if not experiments_dir.exists():
+        raise FileNotFoundError(
+            f"No experiments directory found at {experiments_dir}. "
+            "Cannot expand experiments by base date."
+        )
+
+    matches = [
+        path.name for path in experiments_dir.iterdir() if path.is_dir() and BASE_DATE in path.name
+    ]
+
+    if not matches:
+        raise FileNotFoundError(
+            f"No experiment folders containing '{BASE_DATE}' found in {experiments_dir}."
+        )
+
+    return sorted(matches)
+
+
 def main() -> None:
-    total = len(EXPERIMENTS)
-    for index, experiment in enumerate(EXPERIMENTS, start=1):
+    experiments = _resolve_experiment_names()
+
+    total = len(experiments)
+    for index, experiment in enumerate(experiments, start=1):
         remaining = total - index
         print(
             f"[Batch Inspect] Processing {index}/{total}: {experiment} "
