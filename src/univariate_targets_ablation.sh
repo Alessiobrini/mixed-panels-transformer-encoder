@@ -243,8 +243,7 @@ elif scenario == "B3_no_attention_no_nonlinearity":
 elif scenario == "B5_no_positional_encoding":
     transformer_cfg["use_positional_encoding"] = False
 elif scenario == "B6_y_only":
-    features_cfg["all_monthly"] = False
-    features_cfg["monthly_vars"] = []
+    features_cfg["use_y_only_predictors"] = True
 else:
     raise ValueError(f"Unknown ablation scenario: {scenario}")
 
