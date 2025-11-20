@@ -34,7 +34,13 @@ def _prepare_temp_config(experiment: str) -> Path:
 
 
 def main() -> None:
-    for experiment in EXPERIMENTS:
+    total = len(EXPERIMENTS)
+    for index, experiment in enumerate(EXPERIMENTS, start=1):
+        remaining = total - index
+        print(
+            f"[Batch Inspect] Processing {index}/{total}: {experiment} "
+            f"({remaining} remaining)"
+        )
         temp_config = _prepare_temp_config(experiment)
         try:
             reload_from_config(str(temp_config))
