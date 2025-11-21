@@ -1,0 +1,90 @@
+"""Utility to load inspection metadata for a base experiment and its ablations."""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Dict, Iterable, List
+
+from src.utils.config import Config
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
+INSPECTION_DIR_NAME = "model_inspection"
+META_FILENAME = "meta.json"
+
+
+def _require(path: Path, description: str) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(f"{description}: {path}")
+    return path
+
+
+def _load_config(path: Path | str | None = None) -> Config:
+    cfg_path = Path(path) if path is not None else DEFAULT_CONFIG
+    return Config(cfg_path)
+
+
+def _extract_base_experiment(config: Config) -> str:
+    evaluation_cfg = getattr(config, "evaluation", None)
+    experiment = getattr(evaluation_cfg, "experiment", None) if evaluation_cfg else None
+    if not experiment:
+        raise ValueError("Config must define evaluation.experiment with a base experiment name.")
+    return str(experiment)
+
+
+def _iter_related_experiments(base_experiment: str) -> Iterable[Path]:
+    experiments_dir = _require(
+        PROJECT_ROOT / "outputs" / "experiments",
+        "Missing experiments directory",
+    )
+
+    def _is_related(path: Path) -> bool:
+        return path.is_dir() and (
+            path.name == base_experiment or path.name.startswith(f"{base_experiment}_")
+        )
+
+    matches = [path for path in experiments_dir.iterdir() if _is_related(path)]
+    if not matches:
+        raise FileNotFoundError(
+            f"No experiment folders found for base experiment '{base_experiment}' in {experiments_dir}."
+        )
+
+    yield from sorted(matches)
+
+
+def load_meta_for_experiment(experiment_dir: Path) -> Dict:
+    inspection_dir = _require(
+        experiment_dir / INSPECTION_DIR_NAME,
+        "Missing inspection output directory",
+    )
+    meta_path = _require(inspection_dir / META_FILENAME, "Missing inspection metadata file")
+    return json.loads(meta_path.read_text(encoding="utf-8"))
+
+
+def load_all_inspection_meta(base_experiment: str) -> Dict[str, Dict]:
+    meta: Dict[str, Dict] = {}
+    for experiment_dir in _iter_related_experiments(base_experiment):
+        meta[experiment_dir.name] = load_meta_for_experiment(experiment_dir)
+    return meta
+
+
+def main(argv: List[str] | None = None) -> None:
+    args = argv if argv is not None else sys.argv[1:]
+    config_path = args[0] if args else None
+
+    config = _load_config(config_path)
+    base_experiment = _extract_base_experiment(config)
+    meta_by_experiment = load_all_inspection_meta(base_experiment)
+
+    print(
+        f"Loaded inspection metadata for {len(meta_by_experiment)} "
+        f"experiment(s) using base '{base_experiment}'."
+    )
+    for experiment_name in sorted(meta_by_experiment):
+        print(f" - {experiment_name}")
+
+
+if __name__ == "__main__":
+    main()
