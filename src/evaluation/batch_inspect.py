@@ -21,7 +21,7 @@ EXPERIMENTS = [
 # Alternatively, set BASE_DATE to process every experiment folder containing this
 # substring in its name (e.g., "2024-07-01"). When BASE_DATE is provided,
 # EXPERIMENTS is ignored.
-BASE_DATE: str | None = None
+BASE_DATE: str | None = '2025-09-26'
 
 
 def _prepare_temp_config(experiment: str) -> Path:
