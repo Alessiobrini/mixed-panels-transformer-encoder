@@ -368,7 +368,9 @@ def _capture_attention_weights(
                 q = q.reshape(batch_size, tgt_len, num_heads, head_dim).transpose(1, 2)
                 k = k.reshape(batch_size, tgt_len, num_heads, head_dim).transpose(1, 2)
 
-                q = q * module.scaling
+                # Older PyTorch versions do not expose ``scaling`` on MultiheadAttention.
+                scaling = getattr(module, "scaling", head_dim ** -0.5)
+                q = q * scaling
                 logits = torch.matmul(q, k.transpose(-2, -1))
 
                 if attn_mask is not None:
