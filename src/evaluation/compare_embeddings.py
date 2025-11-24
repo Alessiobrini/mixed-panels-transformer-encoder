@@ -81,3 +81,13 @@ if __name__ == "__main__":
     )
     for experiment_name in sorted(meta_by_experiment):
         print(f" - {experiment_name}")
+
+    experiment = config.evaluation.experiment
+    inspection = meta_by_experiment[experiment]['example_inspection']
+    forward_flow = inspection['forward_flow']
+    attention_matrices = inspection['attention_matrices']
+    encoder_hidden_states = inspection['encoder_hidden_states']
+    
+    
+    
+
