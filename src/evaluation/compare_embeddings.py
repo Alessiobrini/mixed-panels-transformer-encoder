@@ -70,11 +70,8 @@ def load_all_inspection_meta(base_experiment: str) -> Dict[str, Dict]:
     return meta
 
 
-def main(argv: List[str] | None = None) -> None:
-    args = argv if argv is not None else sys.argv[1:]
-    config_path = args[0] if args else None
-
-    config = _load_config(config_path)
+if __name__ == "__main__":
+    config = _load_config()
     base_experiment = _extract_base_experiment(config)
     meta_by_experiment = load_all_inspection_meta(base_experiment)
 
@@ -84,7 +81,3 @@ def main(argv: List[str] | None = None) -> None:
     )
     for experiment_name in sorted(meta_by_experiment):
         print(f" - {experiment_name}")
-
-
-if __name__ == "__main__":
-    main()
