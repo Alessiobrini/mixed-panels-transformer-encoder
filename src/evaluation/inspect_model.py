@@ -323,7 +323,11 @@ def _register_encoder_hooks(
 
 
 @contextmanager
-def _capture_attention_weights(encoder: torch.nn.Module, storage: List[torch.Tensor]):
+def _capture_attention_weights(
+    encoder: torch.nn.Module,
+    weights_storage: List[torch.Tensor],
+    logits_storage: List[torch.Tensor],
+):
     patched: List[Tuple[torch.nn.Module, Any]] = []
     layers = getattr(encoder, "layers", None)
     if layers is None:
@@ -338,12 +342,74 @@ def _capture_attention_weights(encoder: torch.nn.Module, storage: List[torch.Ten
 
             original_forward = mha.forward
 
+            def _compute_attention_logits(
+                module: torch.nn.MultiheadAttention,
+                query: torch.Tensor,
+                key: torch.Tensor,
+                attn_mask: Optional[torch.Tensor] = None,
+                key_padding_mask: Optional[torch.Tensor] = None,
+            ) -> torch.Tensor:
+                # This mirrors the shape transformations in nn.MultiheadAttention when batch_first=True.
+                if not module.batch_first:
+                    query = query.transpose(0, 1)
+                    key = key.transpose(0, 1)
+
+                batch_size, tgt_len, embed_dim = query.shape
+                head_dim = module.head_dim
+                num_heads = module.num_heads
+
+                if module._qkv_same_embed_dim:
+                    qkv = torch.nn.functional.linear(query, module.in_proj_weight, module.in_proj_bias)
+                    q, k, _ = qkv.split(embed_dim, dim=-1)
+                else:  # pragma: no cover - unsupported configuration in current models
+                    q = torch.nn.functional.linear(query, module.q_proj_weight, module.in_proj_bias[:embed_dim])
+                    k = torch.nn.functional.linear(key, module.k_proj_weight, module.in_proj_bias[embed_dim: embed_dim * 2])
+
+                q = q.reshape(batch_size, tgt_len, num_heads, head_dim).transpose(1, 2)
+                k = k.reshape(batch_size, tgt_len, num_heads, head_dim).transpose(1, 2)
+
+                q = q * module.scaling
+                logits = torch.matmul(q, k.transpose(-2, -1))
+
+                if attn_mask is not None:
+                    attn_mask = attn_mask.to(logits.device)
+                    if attn_mask.dim() == 2:
+                        attn_mask = attn_mask.unsqueeze(0).unsqueeze(0)
+                    elif attn_mask.dim() == 3 and attn_mask.size(0) == batch_size * num_heads:
+                        attn_mask = attn_mask.view(batch_size, num_heads, tgt_len, -1)
+                    elif attn_mask.dim() == 3:
+                        attn_mask = attn_mask.unsqueeze(1)
+
+                    if attn_mask.dtype == torch.bool:
+                        logits = logits.masked_fill(attn_mask, float("-inf"))
+                    else:
+                        logits = logits + attn_mask
+
+                if key_padding_mask is not None:
+                    logits = logits.masked_fill(
+                        key_padding_mask.unsqueeze(1).unsqueeze(2),
+                        float("-inf"),
+                    )
+
+                return logits
+
             def make_wrapped(original):
                 def wrapped(query, key, value, **kwargs):
+                    attn_mask = kwargs.get("attn_mask")
+                    key_padding_mask = kwargs.get("key_padding_mask")
                     kwargs["need_weights"] = True
                     kwargs["average_attn_weights"] = False
                     attn_output, attn_weights = original(query, key, value, **kwargs)
-                    storage.append(attn_weights.detach().cpu())
+                    weights_storage.append(attn_weights.detach().cpu())
+                    logits_storage.append(
+                        _compute_attention_logits(
+                            mha,
+                            query,
+                            key,
+                            attn_mask=attn_mask,
+                            key_padding_mask=key_padding_mask,
+                        ).detach().cpu()
+                    )
                     return attn_output, attn_weights
 
                 return wrapped
@@ -360,17 +426,18 @@ def _capture_attention_weights(encoder: torch.nn.Module, storage: List[torch.Ten
 def _collect_attention_and_hidden_states(
     model: torch.nn.Module,
     batch: Dict[str, torch.Tensor],
-) -> Tuple[List[torch.Tensor], List[Dict[str, Any]]]:
+) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[Dict[str, Any]]]:
     encoder = getattr(model, "transformer_encoder", None)
     if encoder is None:
-        return [], []
+        return [], [], []
 
     hidden_states: List[Dict[str, Any]] = []
     attention_matrices: List[torch.Tensor] = []
+    attention_logits: List[torch.Tensor] = []
 
     handles = _register_encoder_hooks(encoder, hidden_states)
     try:
-        with _capture_attention_weights(encoder, attention_matrices):
+        with _capture_attention_weights(encoder, attention_matrices, attention_logits):
             with torch.no_grad():
                 model(
                     value=batch["value"],
@@ -382,7 +449,7 @@ def _collect_attention_and_hidden_states(
             handle.remove()
 
     hidden_states.sort(key=lambda entry: entry["layer"])
-    return attention_matrices, hidden_states
+    return attention_matrices, attention_logits, hidden_states
 
 
 def _to_json_serializable(value: Any) -> Any:
@@ -420,11 +487,14 @@ def _inspect_example_sequence(
 ) -> Dict[str, Any]:
     batch = _batch_from_example(example, device)
     flow = _trace_model_flow(model, batch)
-    attention_matrices, hidden_states = _collect_attention_and_hidden_states(model, batch)
+    attention_matrices, attention_logits, hidden_states = _collect_attention_and_hidden_states(
+        model, batch
+    )
 
     return {
         "forward_flow": flow,
         "attention_matrices": attention_matrices,
+        "attention_logits": attention_logits,
         "encoder_hidden_states": hidden_states,
     }
 
