@@ -72,21 +72,58 @@ def load_all_inspection_meta(base_experiment: str) -> Dict[str, Dict]:
 
 if __name__ == "__main__":
     config = _load_config()
-    base_experiment = _extract_base_experiment(config)
-    meta_by_experiment = load_all_inspection_meta(base_experiment)
+    experiment = _extract_base_experiment(config)
+    meta_by_experiment = load_all_inspection_meta(experiment)
 
     print(
         f"Loaded inspection metadata for {len(meta_by_experiment)} "
-        f"experiment(s) using base '{base_experiment}'."
+        f"experiment(s) using base '{experiment}'."
     )
-    for experiment_name in sorted(meta_by_experiment):
-        print(f" - {experiment_name}")
 
-    experiment = config.evaluation.experiment
-    inspection = meta_by_experiment[experiment]['example_inspection']
-    forward_flow = inspection['forward_flow']
-    attention_matrices = inspection['attention_matrices']
-    encoder_hidden_states = inspection['encoder_hidden_states']
+    inspection = meta_by_experiment[experiment]["example_inspection"]
+    forward_flow = inspection["forward_flow"]
+    attention_matrices = inspection["attention_matrices"]
+    encoder_hidden_states = inspection["encoder_hidden_states"]
+
+    ablation_keys = sorted(
+        key
+        for key in meta_by_experiment
+        if key != experiment and key.startswith(f"{experiment}_")
+    )
+
+    if ablation_keys:
+        print("Available ablations:")
+        for idx, ablation_name in enumerate(ablation_keys, start=1):
+            suffix = ablation_name.split("_", maxsplit=1)[-1]
+            print(f" {idx}: {suffix} ({ablation_name})")
+
+        ablation_selection = input(
+            "Select ablation by number, name, or B-identifier (Enter to skip): "
+        ).strip()
+
+        if ablation_selection:
+            ablation_experiment = None
+
+            if ablation_selection.isdigit():
+                idx = int(ablation_selection) - 1
+                if 0 <= idx < len(ablation_keys):
+                    ablation_experiment = ablation_keys[idx]
+            elif ablation_selection.upper().startswith("B") and ablation_selection[1:].isdigit():
+                candidate = f"{experiment}_{ablation_selection.upper()}"
+                if candidate in meta_by_experiment:
+                    ablation_experiment = candidate
+            elif ablation_selection in meta_by_experiment:
+                ablation_experiment = ablation_selection
+
+            if ablation_experiment is None:
+                raise ValueError(
+                    f"Could not resolve selection '{ablation_selection}' to a known ablation."
+                )
+
+            inspection_ablation = meta_by_experiment[ablation_experiment]["example_inspection"]
+            forward_flow_ablation = inspection_ablation["forward_flow"]
+            attention_matrices_ablation = inspection_ablation["attention_matrices"]
+            encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
     
     
     
