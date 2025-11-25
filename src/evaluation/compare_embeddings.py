@@ -73,6 +73,37 @@ def load_all_inspection_meta(base_experiment: str) -> Dict[str, Dict]:
     return meta
 
 
+def plot_attention_heatmap(
+    attention: Sequence[Sequence[float]],
+    title: str | None = None,
+    xlabel: str = "Source",
+    ylabel: str = "Target",
+):
+    """Plot an attention heatmap using the viridis colormap.
+
+    Parameters
+    ----------
+    attention
+        2D attention matrix or logits with shape (target_length, source_length).
+    title
+        Optional title for the plot.
+    xlabel
+        Label for the x-axis (source tokens).
+    ylabel
+        Label for the y-axis (target tokens).
+    """
+
+    fig, ax = plt.subplots()
+    heatmap = ax.imshow(attention, cmap="viridis", aspect="auto", origin="lower")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+
+    fig.colorbar(heatmap, ax=ax, label="Attention")
+    return fig, ax
+
+
 if __name__ == "__main__":
     config = _load_config()
     experiment = _extract_base_experiment(config)
@@ -88,6 +119,8 @@ if __name__ == "__main__":
     attention_matrices = torch.tensor(inspection["attention_matrices"]).squeeze()
     attention_logits = torch.tensor(inspection["attention_logits"]).squeeze()
     encoder_hidden_states = inspection["encoder_hidden_states"]
+
+    print(f"Base attention_logits length: {len(attention_logits)}")
 
     ablation_keys = sorted(
         key
@@ -125,6 +158,9 @@ if __name__ == "__main__":
             attention_matrices_ablation = torch.tensor(inspection_ablation["attention_matrices"]).squeeze()
             attention_logits_ablation = torch.tensor(inspection_ablation["attention_logits"]).squeeze()
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
+
+            print("Ablation selected:", ablation_experiment)
+            print(f"Ablation attention_logits length: {len(attention_logits_ablation)}")
     
     
     
