@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-from src.utils.config import Config
+
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +14,8 @@ DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
 INSPECTION_DIR_NAME = "model_inspection"
 META_FILENAME = "meta.json"
 
+sys.path.append(str(PROJECT_ROOT))
+from src.utils.config import Config
 
 def _require(path: Path, description: str) -> Path:
     if not path.exists():
