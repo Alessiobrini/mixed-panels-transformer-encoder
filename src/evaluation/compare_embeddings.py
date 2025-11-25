@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Sequence
+
+import matplotlib.pyplot as plt
 
 from src.utils.config import Config
 
@@ -70,6 +72,37 @@ def load_all_inspection_meta(base_experiment: str) -> Dict[str, Dict]:
     return meta
 
 
+def plot_attention_heatmap(
+    attention: Sequence[Sequence[float]],
+    title: str | None = None,
+    xlabel: str = "Source",
+    ylabel: str = "Target",
+):
+    """Plot an attention heatmap using the viridis colormap.
+
+    Parameters
+    ----------
+    attention
+        2D attention matrix or logits with shape (target_length, source_length).
+    title
+        Optional title for the plot.
+    xlabel
+        Label for the x-axis (source tokens).
+    ylabel
+        Label for the y-axis (target tokens).
+    """
+
+    fig, ax = plt.subplots()
+    heatmap = ax.imshow(attention, cmap="viridis", aspect="auto", origin="lower")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+
+    fig.colorbar(heatmap, ax=ax, label="Attention")
+    return fig, ax
+
+
 if __name__ == "__main__":
     config = _load_config()
     experiment = _extract_base_experiment(config)
@@ -85,6 +118,8 @@ if __name__ == "__main__":
     attention_matrices = inspection["attention_matrices"]
     attention_logits = inspection["attention_logits"]
     encoder_hidden_states = inspection["encoder_hidden_states"]
+
+    print(f"Base attention_logits length: {len(attention_logits)}")
 
     ablation_keys = sorted(
         key
@@ -122,6 +157,9 @@ if __name__ == "__main__":
             attention_matrices_ablation = inspection_ablation["attention_matrices"]
             attention_logits_ablation = inspection_ablation["attention_logits"]
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
+
+            print("Ablation selected:", ablation_experiment)
+            print(f"Ablation attention_logits length: {len(attention_logits_ablation)}")
     
     
     
