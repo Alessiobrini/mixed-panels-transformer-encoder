@@ -4,11 +4,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List
+import torch
 
-import matplotlib.pyplot as plt
 
-from src.utils.config import Config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +15,8 @@ DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
 INSPECTION_DIR_NAME = "model_inspection"
 META_FILENAME = "meta.json"
 
+sys.path.append(str(PROJECT_ROOT))
+from src.utils.config import Config
 
 def _require(path: Path, description: str) -> Path:
     if not path.exists():
@@ -115,8 +116,8 @@ if __name__ == "__main__":
 
     inspection = meta_by_experiment[experiment]["example_inspection"]
     forward_flow = inspection["forward_flow"]
-    attention_matrices = inspection["attention_matrices"]
-    attention_logits = inspection["attention_logits"]
+    attention_matrices = torch.tensor(inspection["attention_matrices"]).squeeze()
+    attention_logits = torch.tensor(inspection["attention_logits"]).squeeze()
     encoder_hidden_states = inspection["encoder_hidden_states"]
 
     print(f"Base attention_logits length: {len(attention_logits)}")
@@ -154,8 +155,8 @@ if __name__ == "__main__":
 
             inspection_ablation = meta_by_experiment[ablation_experiment]["example_inspection"]
             forward_flow_ablation = inspection_ablation["forward_flow"]
-            attention_matrices_ablation = inspection_ablation["attention_matrices"]
-            attention_logits_ablation = inspection_ablation["attention_logits"]
+            attention_matrices_ablation = torch.tensor(inspection_ablation["attention_matrices"]).squeeze()
+            attention_logits_ablation = torch.tensor(inspection_ablation["attention_logits"]).squeeze()
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
 
             print("Ablation selected:", ablation_experiment)
