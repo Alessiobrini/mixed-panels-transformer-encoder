@@ -159,6 +159,7 @@ if __name__ == "__main__":
             attention_matrices_ablation = torch.tensor(inspection_ablation["attention_matrices"]).squeeze()
             attention_logits_ablation = torch.tensor(inspection_ablation["attention_logits"]).squeeze()
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
+            # torch.tensor(encoder_hidden_states[0]['tensor']).squeeze()
 
             print("Ablation selected:", ablation_experiment)
             print(f"Ablation attention_logits length: {len(attention_logits_ablation)}")
