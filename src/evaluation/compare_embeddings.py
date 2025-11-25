@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List
+import torch
 
 
 
@@ -84,8 +85,8 @@ if __name__ == "__main__":
 
     inspection = meta_by_experiment[experiment]["example_inspection"]
     forward_flow = inspection["forward_flow"]
-    attention_matrices = inspection["attention_matrices"]
-    attention_logits = inspection["attention_logits"]
+    attention_matrices = torch.tensor(inspection["attention_matrices"]).squeeze()
+    attention_logits = torch.tensor(inspection["attention_logits"]).squeeze()
     encoder_hidden_states = inspection["encoder_hidden_states"]
 
     ablation_keys = sorted(
@@ -121,8 +122,8 @@ if __name__ == "__main__":
 
             inspection_ablation = meta_by_experiment[ablation_experiment]["example_inspection"]
             forward_flow_ablation = inspection_ablation["forward_flow"]
-            attention_matrices_ablation = inspection_ablation["attention_matrices"]
-            attention_logits_ablation = inspection_ablation["attention_logits"]
+            attention_matrices_ablation = torch.tensor(inspection_ablation["attention_matrices"]).squeeze()
+            attention_logits_ablation = torch.tensor(inspection_ablation["attention_logits"]).squeeze()
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
     
     
