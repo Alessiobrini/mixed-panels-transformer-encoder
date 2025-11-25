@@ -83,6 +83,7 @@ if __name__ == "__main__":
     inspection = meta_by_experiment[experiment]["example_inspection"]
     forward_flow = inspection["forward_flow"]
     attention_matrices = inspection["attention_matrices"]
+    attention_logits = inspection["attention_logits"]
     encoder_hidden_states = inspection["encoder_hidden_states"]
 
     ablation_keys = sorted(
@@ -109,11 +110,7 @@ if __name__ == "__main__":
                 if 0 <= idx < len(ablation_keys):
                     ablation_experiment = ablation_keys[idx]
             elif ablation_selection.upper().startswith("B") and ablation_selection[1:].isdigit():
-                candidate = f"{experiment}_{ablation_selection.upper()}"
-                if candidate in meta_by_experiment:
-                    ablation_experiment = candidate
-            elif ablation_selection in meta_by_experiment:
-                ablation_experiment = ablation_selection
+                ablation_experiment = next(k for k in meta_by_experiment if ablation_selection in k)
 
             if ablation_experiment is None:
                 raise ValueError(
@@ -123,6 +120,7 @@ if __name__ == "__main__":
             inspection_ablation = meta_by_experiment[ablation_experiment]["example_inspection"]
             forward_flow_ablation = inspection_ablation["forward_flow"]
             attention_matrices_ablation = inspection_ablation["attention_matrices"]
+            attention_logits_ablation = inspection_ablation["attention_logits"]
             encoder_hidden_states_ablation = inspection_ablation["encoder_hidden_states"]
     
     
