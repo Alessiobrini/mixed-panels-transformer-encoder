@@ -31,7 +31,7 @@ def get_submatrix_block(
     return tensor.index_select(0, row_index_tensor).index_select(1, col_index_tensor)
 
 
-def compute_padded_block_attention_average(
+def compute_Ax(
     attention_matrix: torch.Tensor,
     time_blocks: Sequence[tuple[str, Sequence[int], Sequence[str | None]]],
     n_monthly: int,
@@ -88,7 +88,7 @@ def compute_padded_block_attention_average(
     return padded_blocks, averaged_matrix, count_matrix
 
 
-def compute_block_pair_attention_average(
+def compute_B(
     attention_matrix: torch.Tensor,
     time_blocks: Sequence[tuple[str, Sequence[int], Sequence[str | None]]],
 ) -> tuple[list[list[torch.Tensor]], torch.Tensor]:
@@ -309,7 +309,7 @@ if __name__ == "__main__":
     )
     print("First 5 time blocks (timestamp, indices, variables, frequencies):", time_blocks[:5])
 
-    padded_blocks, averaged_block, contribution_counts = compute_padded_block_attention_average(
+    padded_blocks, Ax, contribution_counts = compute_Ax(
         base_att,
         time_blocks,
         n_monthly,
@@ -322,9 +322,12 @@ if __name__ == "__main__":
         f"{n_monthly + n_quarterly} x {n_monthly + n_quarterly}"
     )
     print("Averaged padded block attention matrix (rows sum to 1 where present):")
-    print(averaged_block)
+    print(Ax)
     print("Contribution count matrix (per-entry divisor used in averaging):")
     print(contribution_counts)
+    
+    
+    block_softmaxes,  B = compute_B(base_att, time_blocks)
 
     ablation_keys = sorted(
         key
