@@ -369,6 +369,27 @@ if __name__ == "__main__":
 
             print("Ablation selected:", ablation_experiment)
             print(f"Ablation attention_logits length: {len(attention_logits_ablation)}")
+
+            ablation_att = attention_logits_ablation[0][0]
+
+            padded_blocks_ablation, Ax_ablation, contribution_counts_ablation = compute_Ax(
+                ablation_att,
+                time_blocks,
+                n_monthly,
+                n_quarterly,
+            )
+
+            print(
+                f"Computed {len(padded_blocks_ablation)} padded block attention matrices for ablation."
+            )
+            print(
+                "Averaged padded block attention matrix for ablation (rows sum to 1 where present):"
+            )
+            print(Ax_ablation)
+            print("Contribution count matrix for ablation (per-entry divisor used in averaging):")
+            print(contribution_counts_ablation)
+
+            block_softmaxes_ablation, B_ablation = compute_B(ablation_att, time_blocks)
     
     
     
