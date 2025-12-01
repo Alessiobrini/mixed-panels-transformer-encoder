@@ -9,6 +9,18 @@ import torch
 import matplotlib.pyplot as plt
 
 
+def get_submatrix_block(
+    matrix: torch.Tensor | Sequence[Sequence[float]], indices: Sequence[int]
+) -> torch.Tensor:
+    """Return the square submatrix defined by ``indices``.
+
+    This is useful for slicing attention matrices into blocks (e.g. using
+    ``time_blocks[0][1]``) while preserving the order of the provided indices.
+    """
+
+    tensor = matrix if isinstance(matrix, torch.Tensor) else torch.tensor(matrix)
+    index_tensor = torch.tensor(indices, device=tensor.device)
+    return tensor.index_select(0, index_tensor).index_select(1, index_tensor)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
