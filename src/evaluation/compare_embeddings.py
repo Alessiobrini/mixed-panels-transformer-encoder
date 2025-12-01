@@ -10,17 +10,25 @@ import matplotlib.pyplot as plt
 
 
 def get_submatrix_block(
-    matrix: torch.Tensor | Sequence[Sequence[float]], indices: Sequence[int]
+    matrix: torch.Tensor | Sequence[Sequence[float]],
+    row_indices: Sequence[int],
+    col_indices: Sequence[int] | None = None,
 ) -> torch.Tensor:
-    """Return the square submatrix defined by ``indices``.
+    """Return the submatrix defined by ``row_indices`` and ``col_indices``.
 
-    This is useful for slicing attention matrices into blocks (e.g. using
-    ``time_blocks[0][1]``) while preserving the order of the provided indices.
+    If ``col_indices`` is omitted, the same indices are used for both axes,
+    preserving the previous diagonal-block behavior while allowing rectangular
+    blocks when separate index lists are provided.
     """
 
     tensor = matrix if isinstance(matrix, torch.Tensor) else torch.tensor(matrix)
-    index_tensor = torch.tensor(indices, device=tensor.device)
-    return tensor.index_select(0, index_tensor).index_select(1, index_tensor)
+    row_index_tensor = torch.tensor(row_indices, device=tensor.device)
+    col_index_tensor = (
+        torch.tensor(col_indices, device=tensor.device)
+        if col_indices is not None
+        else row_index_tensor
+    )
+    return tensor.index_select(0, row_index_tensor).index_select(1, col_index_tensor)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
