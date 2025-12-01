@@ -88,6 +88,44 @@ def compute_padded_block_attention_average(
     return padded_blocks, averaged_matrix, count_matrix
 
 
+def compute_block_pair_attention_average(
+    attention_matrix: torch.Tensor,
+    time_blocks: Sequence[tuple[str, Sequence[int], Sequence[str | None]]],
+) -> tuple[list[list[torch.Tensor]], torch.Tensor]:
+    """Average row-softmaxed attention across all time-block pairings.
+
+    This extracts every possible block formed by pairing the row indices of one
+    time block with the column indices of every time block (including itself).
+    Each block is normalized with a row-wise softmax, then reduced to a single
+    scalar by averaging all entries. The result is a square matrix of shape
+    ``(n_time_blocks, n_time_blocks)`` whose ``(i, j)`` entry represents the
+    mean attention from time block ``i`` to time block ``j``.
+
+    Unlike :func:`compute_padded_block_attention_average`, this function keeps
+    the natural rectangular shape of each block and does not perform padding,
+    making it suitable for contexts where different time blocks have different
+    numbers of monthly variables.
+    """
+
+    device = attention_matrix.device
+    num_blocks = len(time_blocks)
+
+    block_softmaxes: list[list[torch.Tensor]] = []
+    averaged_matrix = torch.zeros((num_blocks, num_blocks), device=device)
+
+    for i, (_, row_indices, *_) in enumerate(time_blocks):
+        row_blocks: list[torch.Tensor] = []
+        for j, (_, col_indices, *_) in enumerate(time_blocks):
+            block = get_submatrix_block(attention_matrix, row_indices, col_indices)
+            block_softmax = torch.softmax(block, dim=1)
+            row_blocks.append(block_softmax)
+            averaged_matrix[i, j] = block_softmax.mean()
+
+        block_softmaxes.append(row_blocks)
+
+    return block_softmaxes, averaged_matrix
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
 INSPECTION_DIR_NAME = "model_inspection"
