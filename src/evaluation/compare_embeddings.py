@@ -146,36 +146,42 @@ if __name__ == "__main__":
         )
     ordered_tokens = [token_meta[i] for i in range(base_att.shape[0])]
 
-    variable_blocks: List[tuple[str, int, int]] = []
-    current_variable = None
-    block_start = 0
+    time_blocks: List[tuple[str, List[int]]] = []
+    current_time = None
+    current_indices: List[int] = []
 
     for idx, token in enumerate(ordered_tokens):
-        variable = token.get("variable")
-        if current_variable is None:
-            current_variable = variable
-            block_start = idx
-            continue
+        token_time = str(token.get("time"))
 
-        if variable != current_variable:
-            variable_blocks.append((current_variable, block_start, idx - 1))
-            current_variable = variable
-            block_start = idx
+        if current_time is None:
+            current_time = token_time
 
-    if ordered_tokens:
-        variable_blocks.append((current_variable, block_start, len(ordered_tokens) - 1))
+        if token_time != current_time:
+            time_blocks.append((current_time, current_indices))
+            current_time = token_time
+            current_indices = []
 
-    full_partition = bool(variable_blocks) and (
-        variable_blocks[0][1] == 0
-        and variable_blocks[-1][2] == len(ordered_tokens) - 1
-        and all(variable_blocks[i][2] + 1 == variable_blocks[i + 1][1] for i in range(len(variable_blocks) - 1))
+        current_indices.append(idx)
+
+    if current_indices:
+        time_blocks.append((current_time, current_indices))
+
+    block_lengths = [len(indices) for _, indices in time_blocks]
+    combined_length = n_monthly + n_quarterly
+    combined_blocks = sum(1 for length in block_lengths if length == combined_length)
+    monthly_only_blocks = sum(1 for length in block_lengths if length == n_monthly)
+
+    print(f"Constructed {len(time_blocks)} time blocks from ordered tokens.")
+    print(f"Unique block lengths: {sorted(set(block_lengths))}")
+    print(
+        "Blocks with monthly + quarterly length: "
+        f"{combined_blocks}/{len(time_blocks)} ({combined_blocks / len(time_blocks):.2%})"
     )
-
-    print(f"Total variable blocks: {len(variable_blocks)}")
-    print("First 10 blocks:", variable_blocks[:10])
-    print("Blocks fully partition [0, 943]:", full_partition)
-
-    print(f"Base attention_logits length: {len(attention_logits)}")
+    print(
+        "Blocks with monthly length only: "
+        f"{monthly_only_blocks}/{len(time_blocks)} ({monthly_only_blocks / len(time_blocks):.2%})"
+    )
+    print("First 5 time blocks (timestamp, indices):", time_blocks[:5])
 
     ablation_keys = sorted(
         key
