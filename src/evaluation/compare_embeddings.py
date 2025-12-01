@@ -158,9 +158,10 @@ if __name__ == "__main__":
         )
     ordered_tokens = [token_meta[i] for i in range(base_att.shape[0])]
 
-    time_blocks: List[tuple[str, List[int]]] = []
+    time_blocks: List[tuple[str, List[int], List[str | None]]] = []
     current_time = None
     current_indices: List[int] = []
+    current_variables: List[str | None] = []
 
     for idx, token in enumerate(ordered_tokens):
         token_time = str(token.get("time"))
@@ -169,16 +170,18 @@ if __name__ == "__main__":
             current_time = token_time
 
         if token_time != current_time:
-            time_blocks.append((current_time, current_indices))
+            time_blocks.append((current_time, current_indices, current_variables))
             current_time = token_time
             current_indices = []
+            current_variables = []
 
         current_indices.append(idx)
+        current_variables.append(token.get("variable"))
 
     if current_indices:
-        time_blocks.append((current_time, current_indices))
+        time_blocks.append((current_time, current_indices, current_variables))
 
-    block_lengths = [len(indices) for _, indices in time_blocks]
+    block_lengths = [len(indices) for _, indices, _ in time_blocks]
     combined_length = n_monthly + n_quarterly
     combined_blocks = sum(1 for length in block_lengths if length == combined_length)
     monthly_only_blocks = sum(1 for length in block_lengths if length == n_monthly)
@@ -193,7 +196,7 @@ if __name__ == "__main__":
         "Blocks with monthly length only: "
         f"{monthly_only_blocks}/{len(time_blocks)} ({monthly_only_blocks / len(time_blocks):.2%})"
     )
-    print("First 5 time blocks (timestamp, indices):", time_blocks[:5])
+    print("First 5 time blocks (timestamp, indices, variables):", time_blocks[:5])
 
     ablation_keys = sorted(
         key
