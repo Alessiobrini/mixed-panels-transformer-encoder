@@ -121,6 +121,60 @@ if __name__ == "__main__":
     attention_logits = torch.tensor(inspection["attention_logits"]).squeeze()
     encoder_hidden_states = inspection["encoder_hidden_states"]
 
+    base_att = attention_logits[0][0]
+    run_config = Config(meta_by_experiment[experiment]["used_config"])
+
+    context_days = run_config.data.context_days
+    n_monthly = len(run_config.features.monthly_vars)
+    n_quarterly = len(run_config.features.quarterly_vars)
+    years_fraction = context_days / 360
+    context_length = int(years_fraction * (n_monthly * 12 + n_quarterly * 4))
+    print(f"Computed context length: {context_length}")
+    if context_length != base_att.shape[0]:
+        print(
+            "Warning: context length does not match attention matrix size "
+            f"({context_length} vs {base_att.shape[0]})."
+        )
+
+    token_meta_raw = meta_by_experiment[experiment]["example_context_token_metadata"]
+    token_meta = {int(k): v for k, v in token_meta_raw.items()}
+    ordered_indices = sorted(token_meta)
+    if ordered_indices != list(range(base_att.shape[0])):
+        print(
+            "Warning: token metadata indices do not cover expected range "
+            f"0-{base_att.shape[0] - 1}: {ordered_indices[:10]} ..."
+        )
+    ordered_tokens = [token_meta[i] for i in range(base_att.shape[0])]
+
+    variable_blocks: List[tuple[str, int, int]] = []
+    current_variable = None
+    block_start = 0
+
+    for idx, token in enumerate(ordered_tokens):
+        variable = token.get("variable")
+        if current_variable is None:
+            current_variable = variable
+            block_start = idx
+            continue
+
+        if variable != current_variable:
+            variable_blocks.append((current_variable, block_start, idx - 1))
+            current_variable = variable
+            block_start = idx
+
+    if ordered_tokens:
+        variable_blocks.append((current_variable, block_start, len(ordered_tokens) - 1))
+
+    full_partition = bool(variable_blocks) and (
+        variable_blocks[0][1] == 0
+        and variable_blocks[-1][2] == len(ordered_tokens) - 1
+        and all(variable_blocks[i][2] + 1 == variable_blocks[i + 1][1] for i in range(len(variable_blocks) - 1))
+    )
+
+    print(f"Total variable blocks: {len(variable_blocks)}")
+    print("First 10 blocks:", variable_blocks[:10])
+    print("Blocks fully partition [0, 943]:", full_partition)
+
     print(f"Base attention_logits length: {len(attention_logits)}")
 
     ablation_keys = sorted(
