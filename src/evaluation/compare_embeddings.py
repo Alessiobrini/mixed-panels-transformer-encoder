@@ -31,6 +31,63 @@ def get_submatrix_block(
     return tensor.index_select(0, row_index_tensor).index_select(1, col_index_tensor)
 
 
+def compute_padded_block_attention_average(
+    attention_matrix: torch.Tensor,
+    time_blocks: Sequence[tuple[str, Sequence[int], Sequence[str | None]]],
+    n_monthly: int,
+    n_quarterly: int,
+) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]:
+    """Extract, normalize, pad, and average block-diagonal attention slices.
+
+    Parameters
+    ----------
+    attention_matrix
+        Full attention (or attention logits) matrix of shape ``(T, T)``.
+    time_blocks
+        Iterable of ``(time_label, indices, variable_names)`` entries where
+        ``indices`` define the token positions for each time block.
+    n_monthly
+        Number of monthly variables for the context, used to derive pad size.
+    n_quarterly
+        Number of quarterly variables for the context, used to derive pad size.
+
+    Returns
+    -------
+    tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]
+        A tuple containing the list of padded block matrices (after softmax),
+        the averaged padded matrix, and a count matrix indicating how many
+        blocks contributed to each position in the averaged matrix.
+    """
+
+    max_block_length = n_monthly + n_quarterly
+    device = attention_matrix.device
+
+    padded_blocks: list[torch.Tensor] = []
+    sum_matrix = torch.zeros((max_block_length, max_block_length), device=device)
+    count_matrix = torch.zeros_like(sum_matrix)
+
+    for _, indices, _ in time_blocks:
+        block = get_submatrix_block(attention_matrix, indices)
+        block_softmax = torch.softmax(block, dim=1)
+
+        padded_block = torch.zeros_like(sum_matrix)
+        block_height, block_width = block_softmax.shape
+        padded_block[:block_height, :block_width] = block_softmax
+
+        contribution_mask = torch.zeros_like(sum_matrix)
+        contribution_mask[:block_height, :block_width] = 1
+
+        sum_matrix += padded_block
+        count_matrix += contribution_mask
+        padded_blocks.append(padded_block)
+
+    averaged_matrix = torch.where(
+        count_matrix > 0, sum_matrix / count_matrix, torch.zeros_like(sum_matrix)
+    )
+
+    return padded_blocks, averaged_matrix, count_matrix
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
 INSPECTION_DIR_NAME = "model_inspection"
@@ -205,6 +262,23 @@ if __name__ == "__main__":
         f"{monthly_only_blocks}/{len(time_blocks)} ({monthly_only_blocks / len(time_blocks):.2%})"
     )
     print("First 5 time blocks (timestamp, indices, variables):", time_blocks[:5])
+
+    padded_blocks, averaged_block, contribution_counts = compute_padded_block_attention_average(
+        base_att,
+        time_blocks,
+        n_monthly,
+        n_quarterly,
+    )
+
+    print(f"Computed {len(padded_blocks)} padded block attention matrices.")
+    print(
+        "Padded block shape (monthly + quarterly): "
+        f"{n_monthly + n_quarterly} x {n_monthly + n_quarterly}"
+    )
+    print("Averaged padded block attention matrix (rows sum to 1 where present):")
+    print(averaged_block)
+    print("Contribution count matrix (per-entry divisor used in averaging):")
+    print(contribution_counts)
 
     ablation_keys = sorted(
         key
