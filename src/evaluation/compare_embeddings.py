@@ -66,7 +66,7 @@ def compute_padded_block_attention_average(
     sum_matrix = torch.zeros((max_block_length, max_block_length), device=device)
     count_matrix = torch.zeros_like(sum_matrix)
 
-    for _, indices, _ in time_blocks:
+    for _, indices, _, _ in time_blocks:
         block = get_submatrix_block(attention_matrix, row_indices= indices, col_indices = indices)
         block_softmax = torch.softmax(block, dim=1)
 
