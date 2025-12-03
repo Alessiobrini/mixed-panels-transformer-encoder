@@ -346,7 +346,13 @@ def main() -> None:
     include_ablations, output_name, device = _aggregation_settings(config)
 
     for experiment_dir in _resolve_experiments(config, include_ablations):
-        results = _analyze_experiment(experiment_dir, device)
+        try:
+            results = _analyze_experiment(experiment_dir, device)
+        except ValueError as exc:
+            if str(exc) == "No attention logits captured; ensure attention is enabled in the model.":
+                print(f"Skipping {experiment_dir.name}: no attention logits captured.")
+                continue
+            raise
         output_dir = experiment_dir / "model_inspection" / "attention_analysis"
         _save_results(output_dir / output_name, results)
         print(
