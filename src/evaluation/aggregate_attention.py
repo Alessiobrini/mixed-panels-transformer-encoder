@@ -193,6 +193,19 @@ def _save_results(output_path: Path, payload: Dict[str, Any]) -> None:
 
 
 def _resolve_experiments(config: Config, include_ablations: bool) -> Iterable[Path]:
+    evaluation_cfg = getattr(config, "evaluation", None)
+    agg_cfg = getattr(evaluation_cfg, "attention_aggregation", None) if evaluation_cfg else None
+    experiments = getattr(agg_cfg, "experiments", None) if agg_cfg else None
+
+    if experiments:
+        for experiment in experiments:
+            base_dir = _resolve_experiment_dir(experiment)
+            if include_ablations:
+                yield from _iter_related_experiments(base_dir.name)
+            else:
+                yield base_dir
+        return
+
     base_experiment = _extract_base_experiment(config)
     if include_ablations:
         yield from _iter_related_experiments(base_experiment)
