@@ -9,6 +9,13 @@ from typing import Any, Dict, Iterable, List
 import torch
 from tqdm import tqdm
 
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from src.evaluation.compare_embeddings import (
     _extract_base_experiment,
     _iter_related_experiments,
@@ -29,11 +36,12 @@ from src.evaluation.inspect_model import (
     _prepare_training_artifacts,
     _resolve_experiment_dir,
 )
+
 from src.train import build_model
 from src.utils.config import Config
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
+
+
 
 
 def _load_model_and_data(experiment_dir: Path, device: torch.device) -> tuple:
