@@ -147,6 +147,10 @@ evaluation:
   true_col: target
   pred_col: predicted
   experiment: 'GDPC1_2025-09-26'  # populate with inspection runs for src/evaluation/inspect_model.py
+  attention_aggregation:
+    include_ablations: false  # set to true to also analyze matching ablation folders
+    output_name: attention_summary.json
+    device: null  # override device string, defaults to cuda if available
 
 retraining:
   ablation:
