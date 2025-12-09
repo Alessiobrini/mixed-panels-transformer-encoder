@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 
 # --- Config ---
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
-EXPERIMENT_DATE = "2025-10-20" #"2025-10-17"
+EXPERIMENT_DATE = "2025-10-17" #"2025-10-17" "2025-10-20"
 SCENARIO_PREFIX = "synth_"
 TIME_COLUMN = "date"
 
@@ -274,3 +274,105 @@ dftlss = dft[dft.index.get_level_values("scenario").str.contains("lss")]
 dfm = df_metrics.xs('midas',level=2)
 dfmnss = dfm[dfm.index.get_level_values("scenario").str.contains("nss")]
 dfmlss = dfm[dfm.index.get_level_values("scenario").str.contains("lss")]
+
+
+
+# =====================================================================
+# === LaTeX TABLE GENERATION FOR SYNTHETIC EXPERIMENTS (LSS + NSS) ===
+# =====================================================================
+save_latex = True
+if save_latex:
+
+    TABLE_DIR = EXPERIMENT_DIR.parent / "tables"
+    TABLE_DIR.mkdir(exist_ok=True)
+    
+    ABLATION_ORDER = ["B1_", "B2_", "B3_", "B5_", "B6_"]
+    ABLATION_RENAME = {
+        "B1_": "AB1",
+        "B2_": "AB2",
+        "B3_": "AB3",
+        "B5_": "AB4",
+        "B6_": "AB5",
+    }
+    BASELINE_PREFIX = "mixed_frequency_transformer"
+    
+    
+    def get_model_metrics(df_metrics, pattern):
+        """
+        Returns a dictionary:
+            model_name → (RMSE, MAE, DA)
+        """
+        df_sub = df_metrics[df_metrics.index.get_level_values("scenario").str.endswith(pattern)]
+        df_flat = df_sub.reset_index()
+    
+        results = {}
+    
+        # === 1. Baseline transformer, midas, ar ===
+        df_base = df_flat[df_flat["scenario"].str.startswith(BASELINE_PREFIX)]
+        if not df_base.empty:
+            for model in ["transformer", "midas", "ar"]:
+                row = df_base[df_base["model"] == model]
+                if not row.empty:
+                    r = row.iloc[0]
+                    results[model] = (r["RMSE"], r["MAE"], r["DA"])
+    
+        # === 2. Ablations: only transformer metric for each ablation ===
+        for old in ABLATION_ORDER:
+            ab_name = ABLATION_RENAME[old]
+            block = df_flat[df_flat["scenario"].str.startswith(old)]
+            if block.empty:
+                continue
+    
+            row = block[block["model"] == "transformer"]
+            if not row.empty:
+                r = row.iloc[0]
+                results[ab_name] = (r["RMSE"], r["MAE"], r["DA"])
+    
+        return results
+    
+    
+    def make_model_table(df_metrics, pattern, date_tag):
+        results = get_model_metrics(df_metrics, pattern)
+        if not results:
+            return None
+    
+        # Build LaTeX
+        lines = []
+        lines.append("\\begin{table}[h]")
+        lines.append(f"\\caption{{Synthetic results ({pattern.upper()}) for experiment date {date_tag}.}}")
+        lines.append("\\begin{tabular}{lccc}")
+        lines.append("\\toprule")
+        lines.append("Model & RMSE & MAE & DA \\\\")
+        lines.append("\\midrule")
+    
+        # Order: transformer, midas, ar, AB1–AB5
+        model_order = ["transformer", "midas", "ar"] + list(ABLATION_RENAME.values())
+    
+        for model in model_order:
+            if model not in results:
+                continue
+            rmse, mae, da = results[model]
+            lines.append(f"{model} & {rmse:.4f} & {mae:.4f} & {da:.4f} \\\\")
+    
+        lines.append("\\bottomrule")
+        lines.append("\\end{tabular}")
+        lines.append("\\end{table}")
+    
+        return "\n".join(lines)
+    
+    
+    # === Generate and save tables ===
+    latex_lss = make_model_table(df_metrics, "lss", EXPERIMENT_DATE)
+    latex_nss = make_model_table(df_metrics, "nss", EXPERIMENT_DATE)
+    
+    if latex_lss:
+        out_lss = TABLE_DIR / f"synthetic_{EXPERIMENT_DATE}_lss.txt"
+        with open(out_lss, "w") as f:
+            f.write(latex_lss)
+        print(f"Saved LSS table to {out_lss}")
+    
+    if latex_nss:
+        out_nss = TABLE_DIR / f"synthetic_{EXPERIMENT_DATE}_nss.txt"
+        with open(out_nss, "w") as f:
+            f.write(latex_nss)
+        print(f"Saved NSS table to {out_nss}")
