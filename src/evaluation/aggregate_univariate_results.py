@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import yaml
 
 # --- Config ---
+INCLUDE_ABLATIONS = True
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
 EXPERIMENT_DATE = "2025-09-26"
 PLOT_PRE_COVID_ONLY = True
@@ -113,15 +114,35 @@ for target in TARGETS:
     # Load predictions and track true values for consistency check
     raw_dfs = []
     pred_dfs = []
+
+    def load_prediction(file_path, model_name):
+        df_loaded = pd.read_csv(file_path, parse_dates=['date'])
+        df_loaded = df_loaded.rename(columns={df_loaded.columns[1]: "true", df_loaded.columns[2]: model_name})
+        df_loaded["target"] = target
+        raw_dfs.append(df_loaded[['date', 'true']].copy())
+        pred_dfs.append(df_loaded.set_index(['date', 'target']))
+
     for model, prefix in PRED_FILES.items():
         file = next(folder.glob(f"{prefix}_*.csv"), None)
         if file is None:
             continue
-        df = pd.read_csv(file, parse_dates=['date'])
-        df = df.rename(columns={df.columns[1]: "true", df.columns[2]: model})
-        df["target"] = target
-        raw_dfs.append(df[['date', 'true']].copy())
-        pred_dfs.append(df.set_index(['date', 'target']))
+        load_prediction(file, model)
+
+    # Load ablation transformer predictions if requested
+    if INCLUDE_ABLATIONS:
+        ablation_prefix = f"{target}_{EXPERIMENT_DATE}_"
+        ablation_dirs = [p for p in sorted(EXPERIMENT_DIR.glob(f"{ablation_prefix}*")) if p.is_dir()]
+
+        for ab_dir in ablation_dirs:
+            ablation_name = ab_dir.name[len(ablation_prefix):]
+            if not ablation_name:
+                continue
+            short_code = ablation_name.split("_")[0]
+            model_name = f"transformer_A{short_code}"
+            ab_file = next(ab_dir.glob(f"{PRED_FILES['transformer']}_*.csv"), None)
+            if ab_file is None:
+                continue
+            load_prediction(ab_file, model_name)
 
     if not pred_dfs:
         continue
@@ -160,9 +181,8 @@ for target in TARGETS:
     }.items():
         subset = merged.loc[mask]
         y_true = subset['true'].values
-        for model in PRED_FILES:
-            if model not in subset.columns:
-                continue
+        model_columns = [col for col in subset.columns if col not in {"date", "target", "true"}]
+        for model in model_columns:
             y_pred = subset[model].values
             metrics = compute_errors(y_true, y_pred)
             prediction_metrics.append({
@@ -237,8 +257,8 @@ for target, merged in plot_data.items():
         # Collect predictions (skip AR if needed)
         preds = {
             model: df_sub[model].values
-            for model in PRED_FILES
-            if model in df_sub.columns and model != "ar"
+            for model in df_sub.columns
+            if model not in {"date", "target", "true", "ar"}
         }
 
         if len(preds) < 2:
