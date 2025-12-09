@@ -1,8 +1,31 @@
 import json
+import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = PROJECT_ROOT / "src" / "config" / "cfg.yaml"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from src.utils.config import Config  # noqa: E402
+from src.evaluation.inspect_model import _resolve_experiment_dir  # noqa: E402
+
 # Path to your saved file
-p = Path(r"G:\other computers\dell duke\workfiles\postdoc_file\peer_review_research\timeseriesattention\mixed-frequency-attention\outputs\experiments\GDPC1_2025-09-26\model_inspection\attention_analysis\attention_summary.json")
+config = Config(DEFAULT_CONFIG)
+evaluation_cfg = getattr(config, "evaluation", None)
+experiment = getattr(evaluation_cfg, "experiment", None) if evaluation_cfg else None
+experiment_dir = _resolve_experiment_dir(experiment)
+p = (
+    experiment_dir
+    / "model_inspection"
+    / "attention_analysis"
+    / "attention_summary.json"
+)
 
 with p.open("r", encoding="utf-8") as f:
     data = json.load(f)
@@ -32,5 +55,80 @@ for k, v in example.items():
 
 # Show shape of mean matrices
 print("\nShape info:")
-print("mean_by_sequence Ax size:", len(data["mean_by_sequence"]["Ax"]), "x", len(data["mean_by_sequence"]["Ax"][0]))
-print("overall_mean Ax size:", len(data["overall_mean"]["Ax"]), "x", len(data["overall_mean"]["Ax"][0]))
+print(
+    "mean_by_sequence Ax size:",
+    len(data["mean_by_sequence"]["Ax"]),
+    "x",
+    len(data["mean_by_sequence"]["Ax"][0]),
+)
+print(
+    "overall_mean Ax size:",
+    len(data["overall_mean"]["Ax"]),
+    "x",
+    len(data["overall_mean"]["Ax"][0]),
+)
+
+
+def plot_heatmap(mat, title, outfile):
+    array = mat
+    if isinstance(mat, torch.Tensor):
+        array = mat.detach().cpu().numpy()
+    else:
+        array = np.array(mat)
+
+    fig, ax = plt.subplots()
+    heatmap = ax.imshow(array, cmap="coolwarm", aspect="auto")
+    fig.colorbar(heatmap, ax=ax)
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.savefig(outfile, dpi=200)
+    plt.close(fig)
+
+
+plots_dir = (
+    experiment_dir
+    / "model_inspection"
+    / "attention_analysis"
+    / "plots"
+)
+plots_dir.mkdir(parents=True, exist_ok=True)
+
+# (A) Mean-by-sequence matrices
+plot_heatmap(
+    data["mean_by_sequence"]["Ax"],
+    "Mean by Sequence - Ax",
+    plots_dir / "mean_by_sequence_Ax.pdf",
+)
+plot_heatmap(
+    data["mean_by_sequence"]["B"],
+    "Mean by Sequence - B",
+    plots_dir / "mean_by_sequence_B.pdf",
+)
+
+# (B) Overall mean matrices
+plot_heatmap(
+    data["overall_mean"]["Ax"],
+    "Overall Mean - Ax",
+    plots_dir / "overall_mean_Ax.pdf",
+)
+plot_heatmap(
+    data["overall_mean"]["B"],
+    "Overall Mean - B",
+    plots_dir / "overall_mean_B.pdf",
+)
+
+# (C) Per-head matrices
+for head in data.get("mean_by_head_across_sequences", []):
+    head_index = head.get("head_index")
+    if head_index is None:
+        continue
+    plot_heatmap(
+        head["Ax"],
+        f"Head {head_index} - Ax",
+        plots_dir / f"head_{head_index}_Ax.pdf",
+    )
+    plot_heatmap(
+        head["B"],
+        f"Head {head_index} - B",
+        plots_dir / f"head_{head_index}_B.pdf",
+    )
