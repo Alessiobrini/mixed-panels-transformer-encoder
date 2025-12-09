@@ -197,6 +197,93 @@ for target in TARGETS:
 df_dm = pd.DataFrame(dm_results).set_index(['target', 'date', 'comparison'])
 df_metrics = pd.DataFrame(prediction_metrics).set_index(['target', 'date', 'model', 'period'])
 
+# --- LaTeX helper ---
+def make_latex_table_for_target(df_metrics, target, experiment_date, outfile=None):
+    """Generate a LaTeX table for transformer and ablation models for a single target.
+
+    Parameters
+    ----------
+    df_metrics : pd.DataFrame
+        Metrics with MultiIndex ['target', 'date', 'model', 'period'] and columns
+        including ['RMSE', 'MAE', 'MAPE', 'DA'].
+    target : str
+        Target series name (e.g., "GDPC1").
+    experiment_date : str
+        Experiment date string matching the 'date' level in df_metrics.
+    outfile : str or Path, optional
+        If provided, write the LaTeX output to this path.
+
+    Returns
+    -------
+    str
+        The LaTeX table as a string.
+    """
+
+    df_filtered = (
+        df_metrics
+        .reset_index()
+        .query("target == @target and date == @experiment_date")
+    )
+
+    df_filtered = df_filtered[
+        (df_filtered["model"] == "transformer")
+        | (df_filtered["model"].str.startswith("transformer_AB"))
+    ]
+
+    model_order = [
+        "transformer",
+        "transformer_AB1",
+        "transformer_AB2",
+        "transformer_AB3",
+        "transformer_AB4",
+        "transformer_AB5",
+        "transformer_AB6",
+    ]
+    periods = ["full", "pre_2020", "post_2020"]
+    metrics = ["RMSE", "MAE", "DA"]
+
+    def fmt(value):
+        return f"{value:.4f}" if pd.notna(value) else ""
+
+    lines = [
+        "\\begin{table}[]",
+        f"\\caption{{Metrics for {target}}}",
+        "\\begin{tabular}{@{}cccccccccc@{}}",
+        "\\toprule",
+        "                  & \\multicolumn{3}{c}{\\textbf{Full}} & \\multicolumn{3}{c}{\\textbf{Pre-2020}} & \\multicolumn{3}{c}{\\textbf{Post-2020}} \\\\ \\midrule",
+        "                  & RMSE      & MAE       & DA        & RMSE        & MAE        & DA         & RMSE        & MAE         & DA         \\\\ \\midrule",
+        f"\\textbf{{{target}}} &           &           &           &             &            &            &             &             &             \\\\ \\midrule",
+    ]
+
+    for model in model_order:
+        df_model = df_filtered[df_filtered["model"] == model]
+        if df_model.empty:
+            continue
+
+        row_entries = [model]
+        for period in periods:
+            df_period = df_model[df_model["period"] == period]
+            if df_period.empty:
+                row_entries.extend([""] * len(metrics))
+                continue
+
+            values = df_period.iloc[0]
+            row_entries.extend([fmt(values[m]) for m in metrics])
+
+        line = "   ".join(row_entries[0:1]) + "   & " + " & ".join(row_entries[1:]) + " \\\\"  # noqa: E501
+        lines.append(line)
+
+    lines.append("\\bottomrule")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+
+    latex_output = "\n".join(lines)
+
+    if outfile is not None:
+        Path(outfile).write_text(latex_output)
+
+    return latex_output
+
 # --- Print performance summary ---
 print("\n=== Model performance summary ===")
 metric_names = ["RMSE", "MAE", "MAPE", "DA"]
