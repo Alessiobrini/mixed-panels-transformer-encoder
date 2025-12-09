@@ -240,6 +240,10 @@ def _analyze_experiment(experiment_dir: Path, device: torch.device) -> Dict[str,
 
     n_monthly = len(run_config.features.monthly_vars)
     n_quarterly = len(run_config.features.quarterly_vars)
+    variable_order = [
+        *map(str, run_config.features.monthly_vars),
+        *map(str, run_config.features.quarterly_vars),
+    ]
 
     num_heads = getattr(getattr(run_config.model, "transformer", None), "nhead", None)
     if num_heads is None:
@@ -249,11 +253,15 @@ def _analyze_experiment(experiment_dir: Path, device: torch.device) -> Dict[str,
     head_accum_B: list[list[torch.Tensor]] = [[] for _ in range(num_heads)]
     sequence_means: list[Dict[str, torch.Tensor]] = []
     per_sequence_payload: list[Dict[str, Any]] = []
+    b_time_labels: list[str] | None = None
 
     for seq_index in tqdm(test_indices, desc=f"{experiment_dir.name} sequences"):
         sequence_window = dataset.sequence_windows[seq_index]
         context_rows = dataset.df.loc[sequence_window["context_idx"]].reset_index(drop=True)
         time_blocks = _build_time_blocks(context_rows, dataset)
+
+        if b_time_labels is None:
+            b_time_labels = [str(block[0]) for block in time_blocks]
 
         example = dataset[seq_index]
         per_head_results, mean_by_head = _analyze_sequence(
@@ -285,6 +293,7 @@ def _analyze_experiment(experiment_dir: Path, device: torch.device) -> Dict[str,
                     }
                     for block in time_blocks
                 ],
+                "B_time_labels": b_time_labels if b_time_labels is not None else [],
                 "per_head": [
                     {
                         "head_index": head_result["head_index"],
@@ -334,6 +343,8 @@ def _analyze_experiment(experiment_dir: Path, device: torch.device) -> Dict[str,
         "num_heads": num_heads,
         "n_monthly": n_monthly,
         "n_quarterly": n_quarterly,
+        "variable_order": variable_order,
+        "B_time_labels": b_time_labels if b_time_labels is not None else [],
         "per_sequence": per_sequence_payload,
         "mean_by_head_across_sequences": head_means,
         "mean_by_sequence": overall_by_sequence,
