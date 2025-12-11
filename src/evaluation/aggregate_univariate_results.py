@@ -235,10 +235,19 @@ def make_latex_table_for_target(df_metrics, target, experiment_date, outfile=Non
         "transformer_AB1",
         "transformer_AB2",
         "transformer_AB3",
-        "transformer_AB4",
         "transformer_AB5",
         "transformer_AB6",
     ]
+    
+    # remap models so AB5 → AB4 and AB6 → AB5
+    rename_map = {
+        "transformer_AB5": "transformer_AB4",
+        "transformer_AB6": "transformer_AB5",
+    }
+    
+    df_filtered["model"] = df_filtered["model"].replace(rename_map)
+    model_order = [rename_map.get(m, m) for m in model_order]
+
     periods = ["full", "pre_2020", "post_2020"]
     metrics = ["RMSE", "MAE", "DA"]
 
@@ -260,7 +269,13 @@ def make_latex_table_for_target(df_metrics, target, experiment_date, outfile=Non
         if df_model.empty:
             continue
 
-        row_entries = [model]
+        # rename model for display
+        display_name = (
+            "transformer" if model == "transformer"
+            else model.replace("transformer_AB", "AB")
+        )
+        row_entries = [display_name]
+
         for period in periods:
             df_period = df_model[df_model["period"] == period]
             if df_period.empty:
