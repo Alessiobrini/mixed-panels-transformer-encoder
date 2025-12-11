@@ -2,6 +2,16 @@ import json
 import sys
 from pathlib import Path
 
+import matplotlib as mpl
+
+mpl.rcParams["text.usetex"] = True
+mpl.rcParams["font.family"] = "serif"
+mpl.rcParams["font.size"] = 10          # base font
+mpl.rcParams["axes.titlesize"] = 10
+mpl.rcParams["axes.labelsize"] = 9
+mpl.rcParams["xtick.labelsize"] = 7
+mpl.rcParams["ytick.labelsize"] = 7
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -14,6 +24,24 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.utils.config import Config  # noqa: E402
 from src.evaluation.inspect_model import _resolve_experiment_dir  # noqa: E402
+
+import re
+
+def latex_escape(label: str) -> str:
+    if label is None:
+        return ""
+    # Escape special LaTeX characters
+    return (
+        label.replace("\\", r"\\")
+             .replace("&", r"\&")
+             .replace("%", r"\%")
+             .replace("$", r"\$")
+             .replace("#", r"\#")
+             .replace("_", r"\_")
+             .replace("{", r"\{")
+             .replace("}", r"\}")
+    )
+
 
 # Path to your saved file
 config = Config(DEFAULT_CONFIG)
@@ -69,7 +97,10 @@ print(
 )
 
 ax_labels = data.get("variable_order")
+if ax_labels:
+    ax_labels = [latex_escape(str(v)) for v in ax_labels]
 b_labels = data.get("B_time_labels")
+b_labels = [str(v).split(" ")[0] for v in b_labels] if b_labels else None
 
 
 def plot_heatmap(mat, title, outfile, xlabels=None, ylabels=None):
@@ -87,9 +118,14 @@ def plot_heatmap(mat, title, outfile, xlabels=None, ylabels=None):
     if ylabels is not None:
         ax.set_yticks(range(len(ylabels)))
         ax.set_yticklabels(ylabels)
+    ax.tick_params(axis="x", labelsize=6)
+    ax.tick_params(axis="y", labelsize=6)
+    
+    
+
     fig.colorbar(heatmap, ax=ax)
     ax.set_title(title)
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.savefig(outfile, dpi=200)
     plt.close(fig)
 
