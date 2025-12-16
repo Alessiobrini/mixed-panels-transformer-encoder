@@ -111,6 +111,7 @@ def plot_heatmap(
     mask_upper_triangle=False,
     add_lag_labels=False,
     enlarge_yaxis=False,
+    square_cells=False,
 ):
     array = mat
     if isinstance(mat, torch.Tensor):
@@ -127,9 +128,15 @@ def plot_heatmap(
     else:
         cmap = "coolwarm"
 
-    figsize = (6, max(4, len(ylabels) * 0.2)) if enlarge_yaxis and ylabels else None
+    if square_cells:
+        width = max(4, len(xlabels) * 0.2) if xlabels is not None else 6
+        height = max(4, len(ylabels) * 0.2) if ylabels is not None else 4
+        figsize = (width, height)
+    else:
+        figsize = (6, max(4, len(ylabels) * 0.2)) if enlarge_yaxis and ylabels else None
     fig, ax = plt.subplots(figsize=figsize)
-    heatmap = ax.imshow(plot_array, cmap=cmap, aspect="auto")
+    aspect = "equal" if square_cells else "auto"
+    heatmap = ax.imshow(plot_array, cmap=cmap, aspect=aspect)
     if xlabels is not None:
         ax.set_xticks(range(len(xlabels)))
         ax.set_xticklabels(xlabels, rotation=90)
@@ -164,6 +171,7 @@ plot_heatmap(
     ax_labels,
     ax_labels,
     enlarge_yaxis=True,
+    square_cells=True,
 )
 plot_heatmap(
     data["overall_mean"]["B"],
@@ -185,6 +193,7 @@ for head in data.get("mean_by_head_across_sequences", []):
         ax_labels,
         ax_labels,
         enlarge_yaxis=True,
+        square_cells=True,
     )
     plot_heatmap(
         head["B"],
