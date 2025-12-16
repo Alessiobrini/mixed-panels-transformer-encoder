@@ -4,6 +4,16 @@ from pathlib import Path
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from arch.bootstrap import MCS
 
+import matplotlib as mpl
+
+mpl.rcParams["text.usetex"] = True
+mpl.rcParams["font.family"] = "serif"
+mpl.rcParams["font.size"] = 10          # base font
+mpl.rcParams["axes.titlesize"] = 10
+mpl.rcParams["axes.labelsize"] = 9
+mpl.rcParams["xtick.labelsize"] = 6
+mpl.rcParams["ytick.labelsize"] = 6
+
 import matplotlib.pyplot as plt
 import yaml, sys
 
