@@ -604,7 +604,6 @@ def build_mcs_latex_tables(mcs_results):
             index=False,
             escape=False,
             column_format=col_spec,
-            booktabs=True,
         ).strip()
         return "\n".join(
             [
