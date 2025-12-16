@@ -398,7 +398,8 @@ def make_dm_latex_tables(df_dm_full, experiment_date, precision=2):
             ]
             val = match["DM_stat"].iloc[0] if not match.empty else np.nan
             row_vals.append(fmt(val))
-        lines.append(" \\".join([" & ".join(row_vals), ""]))
+        lines.append(" & ".join(row_vals) + " \\\\")
+
 
     lines.extend([
         "\\bottomrule",
@@ -412,8 +413,8 @@ def make_dm_latex_tables(df_dm_full, experiment_date, precision=2):
         "transformer_AB1": "AB1",
         "transformer_AB2": "AB2",
         "transformer_AB3": "AB3",
-        "transformer_AB4": "AB4",
-        "transformer_AB5": "AB5",
+        "transformer_AB5": "AB4",
+        "transformer_AB6": "AB5",
     }
     ablation_order = [ablation_map[k] for k in sorted(ablation_map)]
     ablation_lookup = {v: k for k, v in ablation_map.items()}
@@ -438,8 +439,7 @@ def make_dm_latex_tables(df_dm_full, experiment_date, precision=2):
                 & (df_filtered["model_2"] == model_name)
             ]
             val = match["DM_stat"].iloc[0] if not match.empty else np.nan
-            row_vals.append(fmt(val))
-        lines.append(" \\".join([" & ".join(row_vals), ""]))
+        lines.append(" & ".join(row_vals) + " \\\\")
 
     lines.extend([
         "\\bottomrule",
