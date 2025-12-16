@@ -585,26 +585,35 @@ def build_mcs_latex_tables(mcs_results):
 
     Returns
     -------
-    tuple[str, str]
-        (table_models, table_ablations) LaTeX strings using booktabs. Empty
-        strings are returned if there are no full-period results.
+    str
+        Combined LaTeX tables using booktabs. An empty string is returned if
+        there are no full-period results.
     """
 
     df_mcs = pd.DataFrame(mcs_results)
     if df_mcs.empty:
-        return "", ""
+        return ""
 
     df_mcs = df_mcs[df_mcs["period"] == "full"].copy()
     if df_mcs.empty:
-        return "", ""
+        return ""
 
-    def _format_latex(df, columns):
+    def _format_latex(df, columns, caption):
         col_spec = "l" + "c" * (len(columns) - 1)
-        return df.to_latex(
+        tabular = df.to_latex(
             index=False,
             escape=False,
             column_format=col_spec,
             booktabs=True,
+        ).strip()
+        return "\n".join(
+            [
+                r"\begin{table}[htbp]",
+                r"\centering",
+                rf"\caption{{{caption}}}",
+                tabular,
+                r"\end{table}",
+            ]
         )
 
     # --- Table 1: baseline models (no ablations) ---
@@ -640,4 +649,11 @@ def build_mcs_latex_tables(mcs_results):
 
     df_table2 = pd.DataFrame(rows_ab, columns=["target", *ablation_columns])
 
-    return _format_latex(df_table1, df_table1.columns), _format_latex(df_table2, df_table2.columns)
+    table1 = _format_latex(
+        df_table1, df_table1.columns, "MCS inclusion for baseline models"
+    )
+    table2 = _format_latex(
+        df_table2, df_table2.columns, "MCS inclusion for transformer ablations"
+    )
+
+    return f"{table1}\n\n{table2}"
