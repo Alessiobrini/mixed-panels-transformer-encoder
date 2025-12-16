@@ -7,6 +7,8 @@ from arch.bootstrap import MCS
 import matplotlib.pyplot as plt
 import yaml
 
+from src.evaluation.evaluate_forecasts import run_dm_tests
+
 # --- Config ---
 INCLUDE_ABLATIONS = True
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "experiments"
@@ -86,6 +88,7 @@ def run_mcs(y_true, preds_dict, size=0.10, reps=5000, block_size=None, method="R
 
 # --- Storage ---
 dm_results = []
+dm_full_results = []
 prediction_metrics = []
 plot_data = {}  # store merged DataFrames for plotting later
 
@@ -193,9 +196,61 @@ for target in TARGETS:
                 **metrics
             })
 
+        # --- Diebold-Mariano tests (baseline transformer vs others) ---
+        baseline = "transformer"
+        if baseline in model_columns and len(subset) > 1:
+            others = [m for m in model_columns if m != baseline]
+            if others:
+                preds_df = subset[[baseline] + others].copy()
+                dm_period = run_dm_tests(preds_df.drop(columns=["date", "target", "true"], errors="ignore"), subset['true'])
+
+                for other in others:
+                    pair_key = f"{baseline} vs {other}"
+                    reverse_key = f"{other} vs {baseline}"
+                    if pair_key in dm_period.index:
+                        row_dm = dm_period.loc[pair_key]
+                    elif reverse_key in dm_period.index:
+                        row_dm = dm_period.loc[reverse_key]
+                    else:
+                        row_dm = pd.Series({"DM_stat": np.nan, "p_value": np.nan})
+
+                    dm_full_results.append({
+                        "target": target,
+                        "date": suffix,
+                        "period": period,
+                        "model_1": baseline,
+                        "model_2": other,
+                        "DM_stat": row_dm.get("DM_stat", np.nan),
+                        "p_value": row_dm.get("p_value", np.nan)
+                    })
+
 # --- Build DataFrames ---
 df_dm = pd.DataFrame(dm_results).set_index(['target', 'date', 'comparison'])
 df_metrics = pd.DataFrame(prediction_metrics).set_index(['target', 'date', 'model', 'period'])
+df_dm_full = pd.DataFrame(dm_full_results)
+
+# --- Validate new DM results against loaded CSVs (full period only) ---
+if not df_dm.empty and not df_dm_full.empty:
+    for _, row in df_dm_full[df_dm_full["period"] == "full"].iterrows():
+        comp = f"{row['model_1']} vs {row['model_2']}"
+        rev = f"{row['model_2']} vs {row['model_1']}"
+        idx = (row['target'], row['date'], comp)
+        rev_idx = (row['target'], row['date'], rev)
+
+        if idx in df_dm.index:
+            existing = df_dm.loc[idx]
+        elif rev_idx in df_dm.index:
+            existing = df_dm.loc[rev_idx]
+        else:
+            continue
+
+        if pd.notna(existing['DM_stat']) and pd.notna(row['DM_stat']):
+            if abs(existing['DM_stat'] - row['DM_stat']) > 1e-3:
+                print(
+                    f"Warning: DM discrepancy for {row['target']} ({row['period']})"
+                    f" between stored and recomputed values: "
+                    f"stored={existing['DM_stat']}, new={row['DM_stat']}"
+                )
 
 # --- LaTeX helper ---
 def make_latex_table_for_target(df_metrics, target, experiment_date, outfile=None):
