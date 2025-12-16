@@ -5,8 +5,12 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from arch.bootstrap import MCS
 
 import matplotlib.pyplot as plt
-import yaml
+import yaml, sys
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 from src.evaluation.evaluate_forecasts import run_dm_tests
 
 # --- Config ---
