@@ -488,6 +488,9 @@ for metric in metric_names:
 
 # --- Plot using merged data ---
 PLOT_MODELS = ['transformer', 'midas', 'xgb']
+# Optional legend placement per target; use None or omit for default placement
+# Example: {"GDPC1": "upper left", "UNRATE": {"loc": "lower right", "bbox_to_anchor": (1, 0.5)}}
+PLOT_LEGEND_ARGS = {}
 print("\n=== Plotting predictions per target ===")
 for target, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -521,7 +524,13 @@ for target, merged in plot_data.items():
                 **style_kwargs,
             )
     ax.set_title(f"{target}")
-    ax.legend()
+    legend_cfg = PLOT_LEGEND_ARGS.get(target)
+    if legend_cfg is None:
+        ax.legend()
+    elif isinstance(legend_cfg, dict):
+        ax.legend(**legend_cfg)
+    else:
+        ax.legend(loc=legend_cfg)
     plt.tight_layout()
     plt.show()
 
