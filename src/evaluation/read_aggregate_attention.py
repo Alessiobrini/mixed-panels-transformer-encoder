@@ -103,15 +103,33 @@ b_labels = data.get("B_time_labels")
 b_labels = [str(v).split(" ")[0] for v in b_labels] if b_labels else None
 
 
-def plot_heatmap(mat, title, outfile, xlabels=None, ylabels=None):
+def plot_heatmap(
+    mat,
+    outfile,
+    xlabels=None,
+    ylabels=None,
+    mask_upper_triangle=False,
+    add_lag_labels=False,
+    enlarge_yaxis=False,
+):
     array = mat
     if isinstance(mat, torch.Tensor):
         array = mat.detach().cpu().numpy()
     else:
         array = np.array(mat)
 
-    fig, ax = plt.subplots()
-    heatmap = ax.imshow(array, cmap="coolwarm", aspect="auto")
+    plot_array = array.copy()
+    if mask_upper_triangle:
+        mask = np.triu(np.ones_like(plot_array, dtype=bool), k=1)
+        plot_array = np.ma.array(plot_array, mask=mask)
+        cmap = plt.get_cmap("coolwarm").copy()
+        cmap.set_bad(alpha=0)
+    else:
+        cmap = "coolwarm"
+
+    figsize = (6, max(4, len(ylabels) * 0.2)) if enlarge_yaxis and ylabels else None
+    fig, ax = plt.subplots(figsize=figsize)
+    heatmap = ax.imshow(plot_array, cmap=cmap, aspect="auto")
     if xlabels is not None:
         ax.set_xticks(range(len(xlabels)))
         ax.set_xticklabels(xlabels, rotation=90)
@@ -119,12 +137,13 @@ def plot_heatmap(mat, title, outfile, xlabels=None, ylabels=None):
         ax.set_yticks(range(len(ylabels)))
         ax.set_yticklabels(ylabels)
     ax.tick_params(axis="x", labelsize=6)
-    ax.tick_params(axis="y", labelsize=6)
-    
-    
+    ax.tick_params(axis="y", labelsize=6, pad=2)
+
+    if add_lag_labels:
+        ax.set_xlabel("lags")
+        ax.set_ylabel("lags")
 
     fig.colorbar(heatmap, ax=ax)
-    ax.set_title(title)
     plt.tight_layout()
     plt.savefig(outfile, dpi=200)
     plt.close(fig)
@@ -138,36 +157,21 @@ plots_dir = (
 )
 plots_dir.mkdir(parents=True, exist_ok=True)
 
-# (A) Mean-by-sequence matrices
-plot_heatmap(
-    data["mean_by_sequence"]["Ax"],
-    "Mean by Sequence - Ax",
-    plots_dir / "mean_by_sequence_Ax.pdf",
-    ax_labels,
-    ax_labels,
-)
-plot_heatmap(
-    data["mean_by_sequence"]["B"],
-    "Mean by Sequence - B",
-    plots_dir / "mean_by_sequence_B.pdf",
-    b_labels,
-    b_labels,
-)
-
 # (B) Overall mean matrices
 plot_heatmap(
     data["overall_mean"]["Ax"],
-    "Overall Mean - Ax",
     plots_dir / "overall_mean_Ax.pdf",
     ax_labels,
     ax_labels,
+    enlarge_yaxis=True,
 )
 plot_heatmap(
     data["overall_mean"]["B"],
-    "Overall Mean - B",
     plots_dir / "overall_mean_B.pdf",
     b_labels,
     b_labels,
+    mask_upper_triangle=True,
+    add_lag_labels=True,
 )
 
 # (C) Per-head matrices
@@ -177,15 +181,16 @@ for head in data.get("mean_by_head_across_sequences", []):
         continue
     plot_heatmap(
         head["Ax"],
-        f"Head {head_index} - Ax",
         plots_dir / f"head_{head_index}_Ax.pdf",
         ax_labels,
         ax_labels,
+        enlarge_yaxis=True,
     )
     plot_heatmap(
         head["B"],
-        f"Head {head_index} - B",
         plots_dir / f"head_{head_index}_B.pdf",
         b_labels,
         b_labels,
+        mask_upper_triangle=True,
+        add_lag_labels=True,
     )
