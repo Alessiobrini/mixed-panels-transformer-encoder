@@ -8,11 +8,11 @@ import matplotlib as mpl
 
 mpl.rcParams["text.usetex"] = True
 mpl.rcParams["font.family"] = "serif"
-mpl.rcParams["font.size"] = 10          # base font
-mpl.rcParams["axes.titlesize"] = 10
-mpl.rcParams["axes.labelsize"] = 9
-mpl.rcParams["xtick.labelsize"] = 6
-mpl.rcParams["ytick.labelsize"] = 6
+mpl.rcParams["font.size"] = 14          # base font
+mpl.rcParams["axes.titlesize"] = 14
+mpl.rcParams["axes.labelsize"] = 14
+mpl.rcParams["xtick.labelsize"] = 14
+mpl.rcParams["ytick.labelsize"] = 14
 
 import matplotlib.pyplot as plt
 import yaml, sys
