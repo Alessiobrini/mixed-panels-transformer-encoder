@@ -261,7 +261,8 @@ def _analyze_experiment(experiment_dir: Path, device: torch.device) -> Dict[str,
         time_blocks = _build_time_blocks(context_rows, dataset)
 
         if b_time_labels is None:
-            b_time_labels = [str(block[0]) for block in time_blocks]
+            num_blocks = len(time_blocks)
+            b_time_labels = [f"lag_{num_blocks - idx}" for idx in range(num_blocks)]
 
         example = dataset[seq_index]
         per_head_results, mean_by_head = _analyze_sequence(
