@@ -481,3 +481,72 @@ for model in sorted(model_counter):
     freq = count / num_targets
     avg_p = np.mean(model_pvalues[model])
     print(f"{model:<12} included in {count:2d} / {num_targets} targets ({freq:.1%}), avg p-value = {avg_p:.3f}")
+
+
+def build_mcs_latex_tables(mcs_results):
+    """Return LaTeX tables summarizing MCS inclusion for the full period.
+
+    Parameters
+    ----------
+    mcs_results : list of dict
+        Output rows produced earlier in this module. Each row contains keys
+        ``target``, ``period``, ``included_models``, and ``pvalues``.
+
+    Returns
+    -------
+    tuple[str, str]
+        (table_models, table_ablations) LaTeX strings using booktabs. Empty
+        strings are returned if there are no full-period results.
+    """
+
+    df_mcs = pd.DataFrame(mcs_results)
+    if df_mcs.empty:
+        return "", ""
+
+    df_mcs = df_mcs[df_mcs["period"] == "full"].copy()
+    if df_mcs.empty:
+        return "", ""
+
+    def _format_latex(df, columns):
+        col_spec = "l" + "c" * (len(columns) - 1)
+        return df.to_latex(
+            index=False,
+            escape=False,
+            column_format=col_spec,
+            booktabs=True,
+        )
+
+    # --- Table 1: baseline models (no ablations) ---
+    model_columns = ["transformer", "midas", "ar", "ols", "xgb", "nn"]
+    rows = []
+    for _, row in df_mcs.iterrows():
+        included = set(row["included_models"])
+        values = ["\\checkmark" if m in included else "--" for m in model_columns]
+        rows.append([row["target"], *values])
+
+    df_table1 = pd.DataFrame(rows, columns=["target", *model_columns])
+
+    # --- Table 2: transformer ablations ---
+    ablation_columns = ["transformer", "AB1", "AB2", "AB3", "AB4", "AB5"]
+
+    def _ablation_label(name):
+        if name == "transformer":
+            return "transformer"
+        for prefix in ("transformer_AB", "transformer_A"):
+            if name.startswith(prefix):
+                label = name[len(prefix) :]
+                return label if label.startswith("AB") else f"AB{label}"
+        return None
+
+    rows_ab = []
+    for _, row in df_mcs.iterrows():
+        included_labels = { _ablation_label(m) for m in row["included_models"] }
+        values = [
+            "\\checkmark" if col in included_labels else "--"
+            for col in ablation_columns
+        ]
+        rows_ab.append([row["target"], *values])
+
+    df_table2 = pd.DataFrame(rows_ab, columns=["target", *ablation_columns])
+
+    return _format_latex(df_table1, df_table1.columns), _format_latex(df_table2, df_table2.columns)
