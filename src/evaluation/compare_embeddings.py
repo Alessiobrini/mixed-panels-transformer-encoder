@@ -68,11 +68,11 @@ def compute_Ax(
 
     for _, indices, _, _ in time_blocks:
         block = get_submatrix_block(attention_matrix, row_indices= indices, col_indices = indices)
-        block_softmax = torch.softmax(block, dim=1)
+        # block_softmax = torch.softmax(block, dim=1)
 
         padded_block = torch.zeros_like(sum_matrix)
-        block_height, block_width = block_softmax.shape
-        padded_block[:block_height, :block_width] = block_softmax
+        block_height, block_width = block.shape
+        padded_block[:block_height, :block_width] = block
 
         contribution_mask = torch.zeros_like(sum_matrix)
         contribution_mask[:block_height, :block_width] = 1
@@ -84,7 +84,7 @@ def compute_Ax(
     averaged_matrix = torch.where(
         count_matrix > 0, sum_matrix / count_matrix, torch.zeros_like(sum_matrix)
     )
-
+    averaged_matrix = torch.softmax(averaged_matrix, dim=1)
     return padded_blocks, averaged_matrix, count_matrix
 
 
@@ -110,20 +110,20 @@ def compute_B(
     device = attention_matrix.device
     num_blocks = len(time_blocks)
 
-    block_softmaxes: list[list[torch.Tensor]] = []
+    blocks: list[list[torch.Tensor]] = []
     averaged_matrix = torch.zeros((num_blocks, num_blocks), device=device)
 
     for i, (_, row_indices, *_) in enumerate(time_blocks):
         row_blocks: list[torch.Tensor] = []
         for j, (_, col_indices, *_) in enumerate(time_blocks):
             block = get_submatrix_block(attention_matrix, row_indices, col_indices)
-            block_softmax = torch.softmax(block, dim=1)
-            row_blocks.append(block_softmax)
-            averaged_matrix[i, j] = block_softmax.mean()
+            # block_softmax = torch.softmax(block, dim=1)
+            row_blocks.append(block)
+            averaged_matrix[i, j] = block.mean()
 
-        block_softmaxes.append(row_blocks)
+        blocks.append(row_blocks)
 
-    return block_softmaxes, averaged_matrix
+    return blocks, torch.softmax(averaged_matrix, dim=1)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
