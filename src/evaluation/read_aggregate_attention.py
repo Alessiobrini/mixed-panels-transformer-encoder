@@ -9,8 +9,8 @@ mpl.rcParams["font.family"] = "serif"
 mpl.rcParams["font.size"] = 10          # base font
 mpl.rcParams["axes.titlesize"] = 10
 mpl.rcParams["axes.labelsize"] = 9
-mpl.rcParams["xtick.labelsize"] = 7
-mpl.rcParams["ytick.labelsize"] = 7
+mpl.rcParams["xtick.labelsize"] = 6
+mpl.rcParams["ytick.labelsize"] = 6
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -125,7 +125,7 @@ def plot_heatmap(mat, title, outfile, xlabels=None, ylabels=None):
 
     fig.colorbar(heatmap, ax=ax)
     ax.set_title(title)
-    # plt.tight_layout()
+    plt.tight_layout()
     plt.savefig(outfile, dpi=200)
     plt.close(fig)
 
