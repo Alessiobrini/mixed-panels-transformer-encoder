@@ -358,6 +358,97 @@ def make_latex_table_for_target(df_metrics, target, experiment_date, outfile=Non
 
     return latex_output
 
+
+def make_dm_latex_tables(df_dm_full, experiment_date, precision=2):
+    """Return LaTeX tables (as a string) for DM t-stats using df_dm_full.
+
+    This consumes already-computed results and only uses the full-period rows
+    for the provided experiment date. DM t-statistics are formatted with a
+    fixed precision and missing comparisons are shown as ``--``.
+    """
+
+    df_filtered = df_dm_full[
+        (df_dm_full["period"] == "full") & (df_dm_full["date"] == experiment_date)
+    ]
+
+    def fmt(val):
+        return "--" if pd.isna(val) else f"{val:.{precision}f}"
+
+    targets = [t for t in TARGETS if t in df_filtered["target"].unique()]
+
+    # Table 1: Transformer vs competing models
+    comp_models = ["midas", "ar", "ols", "xgb", "nn"]
+    lines = [
+        "\\begin{table}[htbp]",
+        "\\centering",
+        "\\caption{Diebold--Mariano tests: Transformer vs competing models}",
+        "\\begin{tabular}{@{}lccccc@{}}",
+        "\\toprule",
+        "Target & MIDAS & AR & OLS & XGB & NN \\\\",
+        "\\midrule",
+    ]
+
+    for target in targets:
+        row_vals = [target]
+        for model in comp_models:
+            match = df_filtered[
+                (df_filtered["target"] == target)
+                & (df_filtered["model_1"] == "transformer")
+                & (df_filtered["model_2"] == model)
+            ]
+            val = match["DM_stat"].iloc[0] if not match.empty else np.nan
+            row_vals.append(fmt(val))
+        lines.append(" \\".join([" & ".join(row_vals), ""]))
+
+    lines.extend([
+        "\\bottomrule",
+        "\\end{tabular}",
+        "\\end{table}",
+        "",
+    ])
+
+    # Table 2: Transformer vs ablations
+    ablation_map = {
+        "transformer_AB1": "AB1",
+        "transformer_AB2": "AB2",
+        "transformer_AB3": "AB3",
+        "transformer_AB4": "AB4",
+        "transformer_AB5": "AB5",
+    }
+    ablation_order = [ablation_map[k] for k in sorted(ablation_map)]
+    ablation_lookup = {v: k for k, v in ablation_map.items()}
+
+    lines.extend([
+        "\\begin{table}[htbp]",
+        "\\centering",
+        "\\caption{Diebold--Mariano tests: Transformer vs ablations}",
+        "\\begin{tabular}{@{}lccccc@{}}",
+        "\\toprule",
+        "Target & AB1 & AB2 & AB3 & AB4 & AB5 \\\\",
+        "\\midrule",
+    ])
+
+    for target in targets:
+        row_vals = [target]
+        for ab_short in ablation_order:
+            model_name = ablation_lookup[ab_short]
+            match = df_filtered[
+                (df_filtered["target"] == target)
+                & (df_filtered["model_1"] == "transformer")
+                & (df_filtered["model_2"] == model_name)
+            ]
+            val = match["DM_stat"].iloc[0] if not match.empty else np.nan
+            row_vals.append(fmt(val))
+        lines.append(" \\".join([" & ".join(row_vals), ""]))
+
+    lines.extend([
+        "\\bottomrule",
+        "\\end{tabular}",
+        "\\end{table}",
+    ])
+
+    return "\n".join(lines)
+
 # --- Print performance summary ---
 print("\n=== Model performance summary ===")
 metric_names = ["RMSE", "MAE", "MAPE", "DA"]
