@@ -494,11 +494,33 @@ for target, merged in plot_data.items():
     df_plot = merged.copy()
     if PLOT_PRE_COVID_ONLY:
         df_plot = df_plot[df_plot['date'] <= pd.Timestamp("2019-06-30")]
-    ax.plot(df_plot['date'], df_plot['true'], 'k--', label='True')
+    ax.plot(df_plot['date'], df_plot['true'], 'k--', label='Actual')
+
+    label_map = {
+        'transformer': 'MPTE',
+        'midas': 'MIDAS',
+        'xgb': 'XGB',
+        'xgboost': 'XGB',
+    }
+
+    style_map = {
+        'transformer': {"color": "#003f5c", "linewidth": 2.2, "alpha": 1.0},
+        'midas': {"color": "#bc6c25", "linewidth": 1.4, "alpha": 0.85},
+        'xgb': {"color": "#4c956c", "linewidth": 1.4, "alpha": 0.85},
+        'xgboost': {"color": "#4c956c", "linewidth": 1.4, "alpha": 0.85},
+    }
+
     for model in PLOT_MODELS:
         if model in df_plot.columns:
-            ax.plot(df_plot['date'], df_plot[model], label=model.capitalize())
-    ax.set_title(f"{target} Predictions")
+            style_kwargs = style_map.get(model, {})
+            ax.plot(
+                df_plot['date'],
+                df_plot[model],
+                label=label_map.get(model, model),
+                linestyle='-',
+                **style_kwargs,
+            )
+    ax.set_title(f"{target}")
     ax.legend()
     plt.tight_layout()
     plt.show()
