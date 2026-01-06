@@ -490,7 +490,7 @@ for metric in metric_names:
 PLOT_MODELS = ['transformer', 'midas', 'xgb']
 # Optional legend placement per target; use None or omit for default placement
 # Example: {"GDPC1": "upper left", "UNRATE": {"loc": "lower right", "bbox_to_anchor": (1, 0.5)}}
-PLOT_LEGEND_ARGS = {}
+PLOT_LEGEND_ARGS = {"GDPC1": "lower left" , "OUTNFB": "lower left"}
 print("\n=== Plotting predictions per target ===")
 for target, merged in plot_data.items():
     fig, ax = plt.subplots(figsize=(10, 4))
