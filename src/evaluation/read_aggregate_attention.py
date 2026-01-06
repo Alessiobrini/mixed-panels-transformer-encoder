@@ -129,8 +129,8 @@ def plot_heatmap(
         cmap = "coolwarm"
 
     if square_cells:
-        width = max(4, len(xlabels) * 0.2) if xlabels is not None else 6
-        height = max(4, len(ylabels) * 0.2) if ylabels is not None else 4
+        width = 6#max(10, len(xlabels) * 0.2) if xlabels is not None else 6
+        height = 6#max(4, len(ylabels) * 0.2) if ylabels is not None else 4
         figsize = (width, height)
     else:
         figsize = (6, max(4, len(ylabels) * 0.2)) if enlarge_yaxis and ylabels else None
@@ -149,8 +149,13 @@ def plot_heatmap(
     if add_lag_labels:
         ax.set_xlabel("lags")
         ax.set_ylabel("lags")
-
-    fig.colorbar(heatmap, ax=ax)
+    if square_cells:
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.05)
+        fig.colorbar(heatmap, cax=cax)
+    else:
+        fig.colorbar(heatmap, ax=ax)
     plt.tight_layout()
     plt.savefig(outfile, dpi=200)
     plt.close(fig)
@@ -163,6 +168,7 @@ plots_dir = (
     / "plots"
 )
 plots_dir.mkdir(parents=True, exist_ok=True)
+
 
 # (B) Overall mean matrices
 plot_heatmap(
