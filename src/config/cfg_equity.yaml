@@ -1,0 +1,149 @@
+paths:
+  data_processed_equity_template: "data/processed/equity/long_format_{ticker}_{suffix}.csv"
+  outputs:
+    transformer_preds: "outputs/transformer_preds_{suffix}.csv"
+    ar_preds:          "outputs/ar_preds_{suffix}.csv"
+    midas_preds:       "outputs/midas_preds_{suffix}.csv"
+    ols_preds:         "outputs/ols_preds_{suffix}.csv"
+    xgb_preds:         "outputs/xgb_preds_{suffix}.csv"
+    nn_preds:          "outputs/nn_preds_{suffix}.csv"
+
+simulation:
+  simulate: false
+
+equity:
+  active_ticker: AAPL
+  suffix: "7D_43M_14Q"
+  target_template: "{TKR}_eps_yoy"
+  tickers:
+    - AAPL
+    - ADBE
+    - AMD
+    - AMGN
+    - AMZN
+    - AXP
+    - BA
+    - CAT
+    - CRM
+    - CSCO
+    - CVX
+    - DIS
+    - GE
+    - GOOGL
+    - GS
+    - HD
+    - HON
+    - IBM
+    - JNJ
+    - JPM
+    - KO
+    - MCD
+    - META
+    - MMM
+    - MRK
+    - MSFT
+    - NFLX
+    - NKE
+    - NVDA
+    - ORCL
+    - PG
+    - PM
+    - SHW
+    - TRV
+    - TSLA
+    - UNH
+    - V
+    - VZ
+    - WMT
+    - XOM
+  # Subset of monthly vars for MIDAS (8 vars to fit in ~35 training obs)
+  # {TKR} is replaced at runtime with the active ticker
+  midas_monthly_vars_template:
+    - "{TKR}_ret_m"
+    - "{TKR}_rv5_mean"
+    - "{TKR}_rv5_max"
+    - "{TKR}_ret_skew"
+    - "{TKR}_jump_ratio"
+    - MKT_ret_m
+    - MKT_rv5_mean
+    - MKT_rv5_disp
+
+features:
+  target: AAPL_eps_yoy    # overridden at runtime per ticker
+  quarterly_vars:
+    - GDPC1
+    - GPDIC1
+    - PCECC96
+    - DPIC96
+    - OUTNFB
+    - UNRATE
+    - PCECTPI
+    - PCEPILFE
+    - CPIAUCSL
+    - CPILFESL
+    - FPIx
+    - EXPGSC1
+    - IMPGSC1
+
+data:
+  context_days: 120
+  train_ratio: 0.8
+  val_ratio: 0.1
+
+training:
+  seed: 125
+  batch_size: 16
+  epochs: 2  # set low for smoke test, increase for real experiments
+  lr: 1.0e-4
+  optimize: false
+  experiment_name: null
+  patience: 10
+
+model:
+  transformer:
+    d_model: 64
+    nhead: 4
+    num_layers: 4
+    dropout: 0.1
+    d_freq: null
+    d_var: null
+    dim_feedforward: 128
+    activation: "relu"
+    use_nonlinearity: true
+    use_attention: true
+    use_positional_encoding: true
+  ar:
+    max_lag: 12
+  midas:
+    lags: [1, 2, 3]
+    ar_lags: 1
+    use_y_lags: false
+
+single_freq:
+  n_lags: 2
+  optimize: true
+  val_ratio: 0.1
+
+evaluation:
+  forecast_files:
+    - ar_preds
+    - midas_preds
+    - ols_preds
+    - xgb_preds
+    - nn_preds
+    - transformer_preds
+  true_col: target
+  pred_col: predicted
+
+hyperopt:
+  n_trials: 50
+  study_name: null
+  d_model: [32, 64, 128]
+  nhead: [2, 4, 8]
+  num_layers: [2, 4, 6]
+  dropout: [0.05, 0.1, 0.2, 0.3]
+  lr: [1.0e-5, 5.0e-5, 1.0e-4, 5.0e-4, 1.0e-3]
+  d_freq: [2, 4, 8]
+  d_var: [4, 8, 16]
+  dim_feedforward: [64, 128, 256]
+  activation: ["relu", "gelu"]

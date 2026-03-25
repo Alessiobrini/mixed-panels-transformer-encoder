@@ -54,3 +54,7 @@ pip-log.txt
 
 .RData
 .Rhistory
+
+# Large raw data files
+/data/raw/volare/
+Rplots.pdf
