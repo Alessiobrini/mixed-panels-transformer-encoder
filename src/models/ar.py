@@ -8,25 +8,7 @@ from pandas.api.types import is_datetime64_any_dtype
 import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from src.utils.config import Config
-from src.utils.data_paths import (
-    get_output_path,
-    resolve_data_paths,
-    resolve_target_variable,
-)
 
-# ------------------------
-# Setup project root & load config
-# ------------------------
-cfg_path = project_root / "src" / "config" / "cfg.yaml"
-config = Config(cfg_path)
-
-DATA_PATH, suffix, _, _ = resolve_data_paths(config, project_root)
-OUTPUT_FILE = get_output_path(config, project_root, "ar_preds", suffix)
-
-TARGET_VAR  = resolve_target_variable(config)
-TRAIN_SPLIT = config.data.train_ratio
-MAX_LAG     = config.model.ar.max_lag
 
 # ------------------------
 # Load and preprocess data
@@ -66,28 +48,57 @@ def fit_ar_with_optimal_lag(y_train, y_test, max_lag):
 
 
 # ------------------------
-# Main script
+# Callable entry point
 # ------------------------
-if __name__ == "__main__":
-    df = pd.read_csv(DATA_PATH, parse_dates=["Timestamp"])
-    target_df = load_target_series(df, TARGET_VAR)
+def run_ar_baseline(csv_path, target_var, train_ratio, max_lag, output_path):
+    """Run AR baseline on a long-format CSV and save predictions.
+
+    This function is importable from other pipelines (e.g., equity).
+    """
+    csv_path = Path(csv_path)
+    output_path = Path(output_path)
+
+    df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+    target_df = load_target_series(df, target_var)
 
     n = len(target_df)
-    split_idx = int(n * TRAIN_SPLIT)
+    split_idx = int(n * train_ratio)
     y_train = target_df["Value"][:split_idx]
     y_test = target_df["Value"][split_idx:]
     test_dates = target_df["Timestamp"][split_idx:]
 
-    ar_preds, selected_lag, selection, model = fit_ar_with_optimal_lag(y_train, y_test, MAX_LAG)
+    ar_preds, selected_lag, selection, model = fit_ar_with_optimal_lag(y_train, y_test, max_lag)
 
-    # Write predictions CSV
-    OUTPUT_FILE.parent.mkdir(exist_ok=True, parents=True)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
     pd.DataFrame({
         "date": test_dates,
         "target": y_test.values,
-        "predicted": ar_preds.values
-    }).to_csv(OUTPUT_FILE, index=False)
-    print(f"Saved AR forecasts to: {OUTPUT_FILE.resolve()}")
+        "predicted": ar_preds.values,
+    }).to_csv(output_path, index=False)
+    print(f"Saved AR forecasts to: {output_path.resolve()}")
+
+
+# ------------------------
+# Main script
+# ------------------------
+if __name__ == "__main__":
+    from src.utils.config import Config
+    from src.utils.data_paths import (
+        get_output_path,
+        resolve_data_paths,
+        resolve_target_variable,
+    )
+
+    cfg_path = project_root / "src" / "config" / "cfg.yaml"
+    config = Config(cfg_path)
+
+    DATA_PATH, suffix, _, _ = resolve_data_paths(config, project_root)
+    OUTPUT_FILE = get_output_path(config, project_root, "ar_preds", suffix)
+    TARGET_VAR = resolve_target_variable(config)
+    TRAIN_SPLIT = config.data.train_ratio
+    MAX_LAG = config.model.ar.max_lag
+
+    run_ar_baseline(DATA_PATH, TARGET_VAR, TRAIN_SPLIT, MAX_LAG, OUTPUT_FILE)
 
     # # Plot predictions vs. true values
     # plt.figure(figsize=(10, 6))

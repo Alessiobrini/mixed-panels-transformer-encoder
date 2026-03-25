@@ -16,7 +16,9 @@ if (Sys.info()[["sysname"]] == "Windows") {
 }
 
 # —— Config & Load data ——
-config <- yaml::read_yaml("src/config/cfg.yaml")
+args <- commandArgs(trailingOnly = TRUE)
+config_path <- if (length(args) > 0) args[1] else "src/config/cfg.yaml"
+config <- yaml::read_yaml(config_path)
 
 resolve_target <- function(config, default = "Y1") {
   feature_target <- config$features$target
@@ -305,9 +307,16 @@ for (i in seq_len(n_test)) {
     series <- monthly_ts_list[[var]]
     for (j in lags) {
       dt  <- me_date %m-% months(j)
-      val <- window(series,
-                    start = c(year(dt), month(dt)),
-                    end   = c(year(dt), month(dt)))[1]
+      val <- tryCatch(
+        window(series,
+               start = c(year(dt), month(dt)),
+               end   = c(year(dt), month(dt)))[1],
+        error = function(e) {
+          # Lagged month falls outside the monthly ts range (e.g., data
+          # ends before the required lag). Use last available value.
+          tail(as.numeric(series), 1)
+        }
+      )
       xreg[idx] <- val
       idx       <- idx + 1
     }
