@@ -23,7 +23,9 @@ from src.data.mixed_frequency_dataset import MixedFrequencyDataset
 from src.models.mixed_frequency_transformer import MixedFrequencyTransformer
 from src.utils.config import Config
 from src.utils.data_paths import (
+    is_equity_mode,
     resolve_data_paths,
+    resolve_equity_data_paths,
     resolve_target_variable,
     use_quarterly_only_predictors,
 )
@@ -528,8 +530,12 @@ def run_optuna(config, csv_path, exp_path, suffix):
 # Main
 # ------------------------
 if __name__ == '__main__':
-    
-    cfg_path = project_root / 'src' / 'config' / 'cfg.yaml'
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    args = parser.parse_args()
+
+    cfg_path = Path(args.config) if args.config else project_root / 'src' / 'config' / 'cfg.yaml'
     config = Config(cfg_path)
 
     random.seed(config.training.seed)
@@ -539,7 +545,11 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    csv_path, suffix, _, _ = resolve_data_paths(config, project_root)
+    if is_equity_mode(config):
+        csv_path, suffix, target_var = resolve_equity_data_paths(config, project_root)
+        config.features.target = target_var
+    else:
+        csv_path, suffix, _, _ = resolve_data_paths(config, project_root)
 
     mode = 'optuna' if config.training.optimize else 'run'
     if config.training.experiment_name:

@@ -151,3 +151,32 @@ def resolve_target_variable(config) -> str:
         raise ValueError("Real-data runs require `features.target` to be set in the config.")
 
     return feature_target
+
+
+# ---------------------------------------------------------------------------
+# Equity-mode helpers
+# ---------------------------------------------------------------------------
+
+def is_equity_mode(config) -> bool:
+    """Return ``True`` if the config specifies an equity experiment."""
+    equity_cfg = getattr(config, "equity", None)
+    if equity_cfg is None:
+        return False
+    return bool(getattr(equity_cfg, "active_ticker", None))
+
+
+def resolve_equity_data_paths(
+    config, project_root: Path
+) -> Tuple[Path, str, str]:
+    """Return ``(csv_path, suffix, target_variable)`` for the active equity ticker."""
+    ticker = config.equity.active_ticker
+    suffix = getattr(config.equity, "suffix", "7D_43M_14Q")
+    template = config.paths.data_processed_equity_template
+    csv_path = project_root / template.format(ticker=ticker, suffix=suffix)
+    target = config.equity.target_template.replace("{TKR}", ticker)
+    return csv_path, suffix, target
+
+
+def resolve_equity_tickers(config) -> List[str]:
+    """Return the full ticker universe from the equity config."""
+    return list(config.equity.tickers)
