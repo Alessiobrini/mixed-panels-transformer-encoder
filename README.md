@@ -30,8 +30,8 @@ tests/              # unit/integration tests (if present)
 Create a Python environment and install dependencies:
 
 ```bash
-conda create -n mfa-dev python=3.11
-conda activate mfa-dev
+conda create -n tsa-dev python=3.11
+conda activate tsa-dev
 pip install -r requirements.txt
 ```
 
