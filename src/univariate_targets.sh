@@ -17,7 +17,7 @@ conda activate tsa-dev
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 # Set project root and move there
-PROJECT_ROOT="/hpc/group/darec/ab978/tsa-dev" 
+PROJECT_ROOT="/hpc/group/darec/ab978/mixed-panels-transformer-encoder"
 cd "$PROJECT_ROOT"
 
 # Today's date in YYYY-MM-DD format

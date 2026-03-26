@@ -19,7 +19,7 @@ source ~/.bashrc
 conda activate tsa-dev
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-PROJECT_ROOT="/hpc/group/darec/ab978/tsa-dev"
+PROJECT_ROOT="/hpc/group/darec/ab978/mixed-panels-transformer-encoder"
 cd "$PROJECT_ROOT"
 
 # Run all 40 tickers sequentially
