@@ -1,13 +1,16 @@
 #!/bin/bash
 #
 #SBATCH --job-name=equity-experiments
-#SBATCH --partition=gpu-common
 #SBATCH --mem=8G
 #SBATCH --gpus=1
 #SBATCH --output=slurm_equity.out
 #SBATCH --error=slurm_equity.err
 #SBATCH --mail-type=BEGIN,FAIL,END
 #SBATCH --mail-user=alessio.brini@duke.edu
+
+# Usage:
+#   sbatch src/equity_targets.sh                        # default: gpu-common
+#   sbatch -p scavenger-gpu src/equity_targets.sh       # override partition
 
 set -e
 set -o pipefail
