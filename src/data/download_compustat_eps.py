@@ -1,11 +1,16 @@
 """
-Download quarterly EPS data from WRDS Compustat for the 40 VOLARE stocks.
+Download quarterly EPS data from WRDS Compustat.
+
+Supports two modes:
+  - Universe mode (--universe): reads permno/gvkey/ticker from universe CSV
+  - VOLARE mode (default): reads tickers from VOLARE file (legacy behavior)
 
 Outputs:
     data/raw/equity/gvkey_ticker_map.csv   – gvkey ↔ ticker crosswalk
     data/raw/equity/compustat_fundq.csv    – quarterly fundamentals
 """
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -47,12 +52,30 @@ VOLARE_PATH = project_root / "data" / "raw" / "volare" / "realized_variance_stoc
 OUTPUT_DIR = project_root / "data" / "raw" / "equity"
 
 
-def get_ticker_universe(volare_path: Path) -> list[str]:
-    """Read unique stock tickers from the VOLARE realized variance file."""
-    df = pd.read_csv(volare_path, usecols=["symbol"])
-    tickers = sorted(df["symbol"].unique().tolist())
-    print(f"Ticker universe: {len(tickers)} stocks")
-    return tickers
+def get_ticker_universe(
+    universe_path: Path = None, volare_path: Path = None
+) -> tuple[list[str], list[str]]:
+    """Return (tickers, gvkeys) from universe CSV or VOLARE fallback.
+
+    In universe mode, gvkeys come from the universe CSV directly.
+    In VOLARE mode, gvkeys are empty (will be looked up via comp.security).
+    """
+    if universe_path and universe_path.exists():
+        df = pd.read_csv(universe_path)
+        tickers = sorted(df["ticker"].unique().tolist())
+        gvkeys = sorted(df["gvkey"].unique().tolist())
+        print(f"Universe mode: {len(tickers)} tickers, {len(gvkeys)} gvkeys")
+        return tickers, gvkeys
+
+    if volare_path and volare_path.exists():
+        df = pd.read_csv(volare_path, usecols=["symbol"])
+        tickers = sorted(df["symbol"].unique().tolist())
+        print(f"VOLARE mode: {len(tickers)} tickers")
+        return tickers, []
+
+    raise FileNotFoundError(
+        "No universe or VOLARE file found. Provide --universe or check VOLARE_PATH."
+    )
 
 
 def download_gvkey_map(engine, tickers: list[str]) -> pd.DataFrame:
@@ -75,16 +98,29 @@ def download_gvkey_map(engine, tickers: list[str]) -> pd.DataFrame:
     return df
 
 
-def download_fundq(engine, gvkeys: list[str], tickers: list[str]) -> pd.DataFrame:
-    """Query comp.fundq for quarterly EPS data."""
-    ticker_str = ", ".join(f"'{t}'" for t in tickers)
+def download_fundq(
+    engine, gvkeys: list[str], tickers: list[str],
+    start_date: str = "2014-01-01",
+) -> pd.DataFrame:
+    """Query comp.fundq for quarterly EPS data.
+
+    If gvkeys are provided, filters by gvkey (more reliable).
+    Otherwise falls back to ticker-based filtering.
+    """
+    if gvkeys:
+        gvkey_str = ", ".join(f"'{g}'" for g in gvkeys)
+        where_clause = f"a.gvkey IN ({gvkey_str})"
+    else:
+        ticker_str = ", ".join(f"'{t}'" for t in tickers)
+        where_clause = f"b.tic IN ({ticker_str})"
+
     query = f"""
         SELECT a.gvkey, b.tic, a.datadate, a.rdq,
                a.epspxq, a.epsfiq, a.fyearq, a.fqtr
         FROM comp.fundq a
         JOIN comp.security b ON a.gvkey = b.gvkey
-        WHERE b.tic IN ({ticker_str})
-          AND a.datadate >= '2014-01-01'
+        WHERE {where_clause}
+          AND a.datadate >= '{start_date}'
           AND a.datafmt = 'STD'
           AND a.indfmt = 'INDL'
           AND a.consol = 'C'
@@ -120,10 +156,28 @@ def print_summary(fundq: pd.DataFrame) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Download Compustat quarterly EPS")
+    parser.add_argument(
+        "--universe", default=None,
+        help="Path to universe CSV (universe mode). If omitted, uses VOLARE tickers.",
+    )
+    parser.add_argument(
+        "--start-date", default=None,
+        help="Earliest datadate (default: 2001-01-01 for universe, 2014-01-01 for VOLARE)",
+    )
+    args = parser.parse_args()
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Get ticker universe
-    tickers = get_ticker_universe(VOLARE_PATH)
+    universe_path = Path(args.universe) if args.universe else None
+    if universe_path and not universe_path.is_absolute():
+        universe_path = project_root / universe_path
+    tickers, gvkeys = get_ticker_universe(universe_path, VOLARE_PATH)
+
+    start_date = args.start_date
+    if start_date is None:
+        start_date = "2001-01-01" if gvkeys else "2014-01-01"
 
     # 2. Connect to WRDS via SQLAlchemy
     print("\nConnecting to WRDS...")
@@ -131,15 +185,16 @@ def main():
     engine = create_engine(wrds_url)
 
     with engine.connect() as conn:
-        # 3. Download gvkey map
-        gvkey_map = download_gvkey_map(conn, tickers)
-        gvkey_map_path = OUTPUT_DIR / "gvkey_ticker_map.csv"
-        gvkey_map.to_csv(gvkey_map_path, index=False)
-        print(f"Saved: {gvkey_map_path}")
+        # 3. Download gvkey map (skip if universe already provides gvkeys)
+        if not gvkeys:
+            gvkey_map = download_gvkey_map(conn, tickers)
+            gvkey_map_path = OUTPUT_DIR / "gvkey_ticker_map.csv"
+            gvkey_map.to_csv(gvkey_map_path, index=False)
+            print(f"Saved: {gvkey_map_path}")
+            gvkeys = gvkey_map["gvkey"].unique().tolist()
 
         # 4. Download quarterly fundamentals
-        gvkeys = gvkey_map["gvkey"].unique().tolist()
-        fundq = download_fundq(conn, gvkeys, tickers)
+        fundq = download_fundq(conn, gvkeys, tickers, start_date=start_date)
         fundq_path = OUTPUT_DIR / "compustat_fundq.csv"
         fundq.to_csv(fundq_path, index=False)
         print(f"Saved: {fundq_path}")

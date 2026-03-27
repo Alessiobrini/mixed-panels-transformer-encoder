@@ -178,5 +178,11 @@ def resolve_equity_data_paths(
 
 
 def resolve_equity_tickers(config) -> List[str]:
-    """Return the full ticker universe from the equity config."""
+    """Return the full ticker universe from universe_file or config.equity.tickers."""
+    universe_file = getattr(config.equity, "universe_file", None)
+    if universe_file:
+        import pandas as pd
+        universe_path = project_root / universe_file
+        if universe_path.exists():
+            return pd.read_csv(universe_path)["ticker"].tolist()
     return list(config.equity.tickers)
