@@ -93,7 +93,7 @@ data:
 training:
   seed: 125
   batch_size: 16
-  epochs: 2  # set low for smoke test, increase for real experiments
+  epochs: 200
   lr: 1.0e-4
   optimize: false
   experiment_name: null
