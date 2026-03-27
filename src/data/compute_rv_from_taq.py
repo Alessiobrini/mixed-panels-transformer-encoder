@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
+from tqdm import tqdm
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
@@ -315,17 +316,15 @@ def main():
 
     engine = create_engine(get_wrds_url())
 
-    for year in years:
+    year_bar = tqdm(years, desc="Years", unit="yr", position=0)
+    for year in year_bar:
         checkpoint_path = CHECKPOINT_DIR / f"rv_{year}.parquet"
 
         if args.resume and checkpoint_path.exists():
-            print(f"\n  Year {year}: checkpoint exists, skipping")
+            year_bar.set_postfix_str(f"{year} (cached)")
             continue
 
-        print(f"\n{'=' * 50}")
-        print(f"  Processing year {year}")
-        print(f"{'=' * 50}")
-
+        year_bar.set_postfix_str(f"{year}")
         year_results = []
 
         with engine.connect() as conn:
@@ -333,29 +332,29 @@ def main():
             try:
                 dates = get_trading_dates_for_year(conn, year)
             except Exception as e:
-                print(f"  WARNING: could not access taqm_{year}.ctm_{year}: {e}")
+                tqdm.write(f"  WARNING: could not access taqm_{year}.ctm_{year}: {e}")
                 continue
 
-            print(f"  {len(dates)} trading days")
-
-            for i, date in enumerate(dates):
+            day_bar = tqdm(
+                dates, desc=f"  {year}", unit="day", position=1, leave=False,
+            )
+            for date in day_bar:
                 day_results = process_day(conn, year, date, tickers)
                 year_results.extend(day_results)
-
-                if (i + 1) % 50 == 0 or i == len(dates) - 1:
-                    n_obs = len(year_results)
-                    print(
-                        f"    Day {i + 1}/{len(dates)} ({date}): "
-                        f"{n_obs:,} total observations"
-                    )
+                day_bar.set_postfix_str(
+                    f"{date} | {len(year_results):,} obs"
+                )
+            day_bar.close()
 
         if year_results:
             year_df = pd.DataFrame(year_results)
             year_df["date"] = pd.to_datetime(year_df["date"])
             year_df.to_parquet(checkpoint_path, index=False)
-            print(f"  Saved checkpoint: {checkpoint_path.name} ({len(year_df):,} rows)")
+            tqdm.write(
+                f"  {year}: saved {len(year_df):,} rows to {checkpoint_path.name}"
+            )
         else:
-            print(f"  No data for year {year}")
+            tqdm.write(f"  {year}: no data")
 
     engine.dispose()
 

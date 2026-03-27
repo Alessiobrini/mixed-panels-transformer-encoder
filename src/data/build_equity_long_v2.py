@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from scipy.stats import skew
+from tqdm import tqdm
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
@@ -439,7 +440,8 @@ def main():
 
     # Build per-stock long-format files
     print(f"\nBuilding per-stock long-format CSVs in {OUTPUT_DIR}/")
-    for _, row in universe.iterrows():
+    for _, row in tqdm(universe.iterrows(), total=len(universe),
+                       desc="Building CSVs", unit="stock"):
         permno = row["permno"]
         ticker = row["ticker"]
 
@@ -473,7 +475,7 @@ def main():
         combined.to_csv(out_path, index=False)
 
         n_targets = len(quarterly_target_long)
-        print(
+        tqdm.write(
             f"  {ticker}: {len(combined):>7,} rows  ({n_daily}D, {n_monthly}M, {n_quarterly}Q)  "
             f"{n_targets} quarterly targets  -> {out_path.name}"
         )

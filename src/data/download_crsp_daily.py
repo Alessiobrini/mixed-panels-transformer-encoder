@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from tqdm import tqdm
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
@@ -88,13 +89,13 @@ def main():
     engine = create_engine(get_wrds_url())
     chunks = []
 
+    n_chunks = (len(permnos) + args.chunk_size - 1) // args.chunk_size
     with engine.connect() as conn:
-        for i in range(0, len(permnos), args.chunk_size):
+        for i in tqdm(range(0, len(permnos), args.chunk_size),
+                      total=n_chunks, desc="CRSP chunks", unit="chunk"):
             batch = permnos[i : i + args.chunk_size]
-            print(f"  Chunk {i // args.chunk_size + 1}: permnos {batch[0]}..{batch[-1]}")
             df = download_chunk(conn, batch, START_DATE)
             chunks.append(df)
-            print(f"    {len(df)} rows")
 
     engine.dispose()
 
