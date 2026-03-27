@@ -56,8 +56,6 @@ def download_chunk(conn, permnos: list[int], start_date: str) -> pd.DataFrame:
         FROM crsp.dsf
         WHERE permno IN ({permno_str})
           AND date >= :start_date
-          AND shrcd IN (10, 11)
-          AND exchcd IN (1, 2, 3)
         ORDER BY permno, date
     """)
     return pd.read_sql(query, conn, params={"start_date": start_date})

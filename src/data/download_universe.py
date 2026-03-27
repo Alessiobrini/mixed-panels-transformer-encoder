@@ -118,8 +118,6 @@ def get_crsp_daily_coverage(conn, permnos: list[int]) -> pd.DataFrame:
         FROM crsp.dsf
         WHERE permno IN ({permno_str})
           AND date >= :start_date
-          AND shrcd IN (10, 11)
-          AND exchcd IN (1, 2, 3)
         GROUP BY permno
     """)
     df = pd.read_sql(query, conn, params={"start_date": START_DATE})
@@ -155,7 +153,6 @@ def get_market_cap(conn, permnos: list[int], ref_date: str = "2024-12-31") -> pd
         FROM crsp.dsf
         WHERE permno IN ({permno_str})
           AND date <= :ref_date
-          AND shrcd IN (10, 11)
         ORDER BY permno, date DESC
     """)
     df = pd.read_sql(query, conn, params={"ref_date": ref_date})
