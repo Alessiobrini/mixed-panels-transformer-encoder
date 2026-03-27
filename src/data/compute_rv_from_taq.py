@@ -303,7 +303,7 @@ def main():
     if args.years:
         years = args.years
     else:
-        years = list(range(2003, 2027))
+        years = list(range(2014, 2027))
 
     print(f"Years to process: {years}")
 

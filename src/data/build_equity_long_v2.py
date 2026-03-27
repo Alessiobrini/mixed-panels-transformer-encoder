@@ -45,7 +45,7 @@ FRED_MD_PATH = project_root / "data" / "raw" / "fred_data" / "transf_md.csv"
 FRED_QD_PATH = project_root / "data" / "raw" / "fred_data" / "transf_qd.csv"
 OUTPUT_DIR = project_root / "data" / "processed" / "equity"
 
-START_DATE = "2003-01-01"
+START_DATE = "2014-01-01"
 MIN_MONTHLY_OBS = 15  # minimum daily observations to form a valid month
 
 # Same macro variable lists as build_equity_long.py

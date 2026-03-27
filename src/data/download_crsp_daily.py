@@ -21,7 +21,7 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
 OUTPUT_DIR = project_root / "data" / "raw" / "equity"
-START_DATE = "2003-01-01"
+START_DATE = "2014-01-01"
 
 
 def get_wrds_url() -> str:

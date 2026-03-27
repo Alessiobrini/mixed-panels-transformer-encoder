@@ -24,7 +24,7 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
 OUTPUT_DIR = project_root / "data" / "raw" / "equity"
-START_DATE = "2003-01-01"
+START_DATE = "2014-01-01"
 
 
 # ---------------------------------------------------------------------------
@@ -240,9 +240,9 @@ def select_universe(
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="Select equity universe from S&P 500 history")
-    parser.add_argument("--top-n", type=int, default=100, help="Number of stocks to select")
+    parser.add_argument("--top-n", type=int, default=500, help="Number of stocks to select")
     parser.add_argument("--min-daily-coverage", type=float, default=0.80)
-    parser.add_argument("--min-quarterly-obs", type=int, default=60)
+    parser.add_argument("--min-quarterly-obs", type=int, default=12)
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
