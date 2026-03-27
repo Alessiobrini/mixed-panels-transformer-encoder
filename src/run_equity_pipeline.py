@@ -165,7 +165,7 @@ def _build_quarterly_wide(csv_path: Path, target_var: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Per-ticker experiment
 # ---------------------------------------------------------------------------
-def run_ticker(config, ticker: str, today: str):
+def run_ticker(config, ticker: str, today: str, cfg_path: Path):
     """Run all models + evaluation for one ticker."""
     config.equity.active_ticker = ticker
     csv_path, suffix, target_var = resolve_equity_data_paths(config, project_root)
@@ -176,13 +176,15 @@ def run_ticker(config, ticker: str, today: str):
     exp_path = project_root / "outputs" / "experiments" / exp_name
     exp_path.mkdir(parents=True, exist_ok=True)
 
+    # Save config snapshot for reproducibility
+    shutil.copy(cfg_path, exp_path / "used_config.yaml")
+
     print(f"\n{'=' * 60}")
     print(f"  Ticker: {ticker}  |  Target: {target_var}  |  Exp: {exp_name}")
     print(f"{'=' * 60}")
 
     # --- 1. MPTE Transformer ---
     print("\n--- MPTE Transformer ---")
-    cfg_copy_path = exp_path / "used_config.yaml"
     try:
         if config.training.optimize:
             run_optuna(config, csv_path, exp_path, suffix)
@@ -318,7 +320,8 @@ def main():
     parser.add_argument("--ticker", default=None, help="Run single ticker")
     args = parser.parse_args()
 
-    config = Config(project_root / args.config)
+    cfg_path = project_root / args.config
+    config = Config(cfg_path)
     set_seeds(config.training.seed)
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -330,7 +333,7 @@ def main():
     print(f"Equity pipeline: {len(tickers)} ticker(s), date={today}")
 
     for ticker in tickers:
-        run_ticker(config, ticker, today)
+        run_ticker(config, ticker, today, cfg_path)
 
     print(f"\nAll {len(tickers)} ticker(s) completed.")
 
