@@ -153,115 +153,102 @@ def get_trading_dates_for_year(conn, year: int) -> list[str]:
     return df["date"].astype(str).tolist()
 
 
-def download_day_trades(
-    conn, year: int, date: str, tickers: list[str]
+def download_5min_prices(
+    conn, year: int, dates: list[str], tickers: list[str]
 ) -> pd.DataFrame:
-    """Download intraday trades for given tickers on a single day.
+    """Download 5-minute last-price data aggregated server-side.
 
-    Filters:
-      - Regular trades only (tr_corr = '00')
-      - Positive price
-      - Market hours (9:30-16:00)
+    Instead of fetching all ticks and resampling locally, this does the
+    5-minute bucketing in SQL so only ~78 rows per stock per day are
+    transferred (vs hundreds of thousands of raw ticks).
     """
     table = f"taqm_{year}.ctm_{year}"
     ticker_str = ", ".join(f"'{t}'" for t in tickers)
+    date_str = ", ".join(f"'{d}'" for d in dates)
 
+    # Bucket trades into 5-minute intervals using integer division on
+    # the minutes-since-midnight, then take the last trade price per bin.
     query = text(f"""
-        SELECT date, time_m, sym_root AS ticker, price
-        FROM {table}
-        WHERE date = :date
-          AND sym_root IN ({ticker_str})
-          AND tr_corr = '00'
-          AND price > 0
-          AND time_m >= :market_open
-          AND time_m < :market_close
-        ORDER BY sym_root, time_m
-    """)
-    return pd.read_sql(
-        query, conn,
-        params={
-            "date": date,
-            "market_open": MARKET_OPEN,
-            "market_close": MARKET_CLOSE,
-        },
-    )
-
-
-def resample_to_5min(trades_day: pd.DataFrame, ticker: str) -> np.ndarray:
-    """Resample tick data to 5-minute last-price, compute log returns.
-
-    Returns array of 5-min log returns.
-    """
-    stock = trades_day[trades_day["ticker"] == ticker].copy()
-    if stock.empty:
-        return np.array([])
-
-    # Combine date + time_m into a single datetime
-    # time_m comes as datetime.time objects from WRDS
-    date_val = pd.Timestamp(stock["date"].iloc[0])
-    stock["timestamp"] = stock["time_m"].apply(
-        lambda t: date_val.replace(
-            hour=t.hour, minute=t.minute, second=t.second,
-            microsecond=t.microsecond,
+        WITH bucketed AS (
+            SELECT
+                date,
+                sym_root AS ticker,
+                price,
+                time_m,
+                (EXTRACT(HOUR FROM time_m) * 60
+                 + EXTRACT(MINUTE FROM time_m)) AS minutes_since_midnight,
+                ROW_NUMBER() OVER (
+                    PARTITION BY date, sym_root,
+                        FLOOR((EXTRACT(HOUR FROM time_m) * 60
+                               + EXTRACT(MINUTE FROM time_m)) / {INTERVAL_MINUTES})
+                    ORDER BY time_m DESC
+                ) AS rn
+            FROM {table}
+            WHERE date IN ({date_str})
+              AND sym_root IN ({ticker_str})
+              AND tr_corr = '00'
+              AND price > 0
+              AND time_m >= '{MARKET_OPEN}'
+              AND time_m < '{MARKET_CLOSE}'
         )
-    )
-
-    # Create 5-minute bins from 9:30 to 16:00
-    date_str = date_val.strftime("%Y-%m-%d")
-    bins = pd.date_range(
-        start=f"{date_str} {MARKET_OPEN}",
-        end=f"{date_str} {MARKET_CLOSE}",
-        freq=f"{INTERVAL_MINUTES}min",
-    )
-
-    # Assign each trade to a bin
-    stock["bin"] = pd.cut(
-        stock["timestamp"], bins=bins, right=False, labels=bins[:-1]
-    )
-    stock = stock.dropna(subset=["bin"])
-
-    if stock.empty:
-        return np.array([])
-
-    # Last price in each 5-min bin
-    last_price = stock.groupby("bin", observed=False)["price"].last()
-
-    # Forward-fill missing bins, then compute log returns
-    last_price = last_price.reindex(bins[:-1]).ffill().dropna()
-
-    if len(last_price) < 2:
-        return np.array([])
-
-    prices = last_price.values
-    log_returns = np.diff(np.log(prices))
-
-    return log_returns
+        SELECT date, ticker, price,
+               FLOOR(minutes_since_midnight / {INTERVAL_MINUTES}) AS bin_id
+        FROM bucketed
+        WHERE rn = 1
+        ORDER BY date, ticker, bin_id
+    """)
+    return pd.read_sql(query, conn)
 
 
-def process_day(
-    conn, year: int, date: str, tickers: list[str]
+def compute_day_rv(day_df: pd.DataFrame, ticker: str, date_val) -> dict:
+    """Compute RV measures for one stock-day from 5-min last prices.
+
+    Args:
+        day_df: DataFrame with columns [price, bin_id] for one stock-day,
+                sorted by bin_id.
+        ticker: stock ticker.
+        date_val: date value.
+
+    Returns:
+        dict with ticker, date, rv5, bv5, rsp5, rsn5, rk, or None.
+    """
+    prices = day_df.sort_values("bin_id")["price"].values
+
+    if len(prices) < 6:
+        return None
+
+    # Forward-fill gaps: create full bin grid and fill
+    all_bins = np.arange(day_df["bin_id"].min(), day_df["bin_id"].max() + 1)
+    price_series = pd.Series(prices, index=day_df.sort_values("bin_id")["bin_id"].values)
+    price_series = price_series.reindex(all_bins).ffill().dropna()
+
+    if len(price_series) < 6:
+        return None
+
+    log_returns = np.diff(np.log(price_series.values))
+    measures = compute_rv_measures(log_returns)
+    measures["ticker"] = ticker
+    measures["date"] = date_val
+    return measures
+
+
+def process_date_batch(
+    conn, year: int, dates: list[str], tickers: list[str]
 ) -> list[dict]:
-    """Process all tickers for a single trading day.
+    """Process a batch of trading days at once via a single SQL query.
 
     Returns list of dicts with [ticker, date, rv5, bv5, rsp5, rsn5, rk].
     """
-    trades = download_day_trades(conn, year, date, tickers)
+    df = download_5min_prices(conn, year, dates, tickers)
 
-    if trades.empty:
+    if df.empty:
         return []
 
     results = []
-    for ticker in tickers:
-        log_returns = resample_to_5min(trades, ticker)
-
-        if len(log_returns) < 5:
-            # Not enough data for meaningful RV computation
-            continue
-
-        measures = compute_rv_measures(log_returns)
-        measures["ticker"] = ticker
-        measures["date"] = date
-        results.append(measures)
+    for (date_val, ticker), group in df.groupby(["date", "ticker"]):
+        measures = compute_day_rv(group, ticker, date_val)
+        if measures is not None:
+            results.append(measures)
 
     return results
 
@@ -289,6 +276,12 @@ def main():
         "--resume",
         action="store_true",
         help="Resume from last checkpoint",
+    )
+    parser.add_argument(
+        "--batch-days",
+        type=int,
+        default=5,
+        help="Number of trading days to process per SQL query (default: 5)",
     )
     args = parser.parse_args()
 
@@ -335,16 +328,24 @@ def main():
                 tqdm.write(f"  WARNING: could not access taqm_{year}.ctm_{year}: {e}")
                 continue
 
-            day_bar = tqdm(
-                dates, desc=f"  {year}", unit="day", position=1, leave=False,
+            # Process days in batches for much faster SQL throughput
+            n_batches = (len(dates) + args.batch_days - 1) // args.batch_days
+            batch_bar = tqdm(
+                range(0, len(dates), args.batch_days),
+                total=n_batches,
+                desc=f"  {year}",
+                unit="batch",
+                position=1,
+                leave=False,
             )
-            for date in day_bar:
-                day_results = process_day(conn, year, date, tickers)
-                year_results.extend(day_results)
-                day_bar.set_postfix_str(
-                    f"{date} | {len(year_results):,} obs"
+            for i in batch_bar:
+                date_batch = dates[i : i + args.batch_days]
+                batch_results = process_date_batch(conn, year, date_batch, tickers)
+                year_results.extend(batch_results)
+                batch_bar.set_postfix_str(
+                    f"{date_batch[0]}..{date_batch[-1]} | {len(year_results):,} obs"
                 )
-            day_bar.close()
+            batch_bar.close()
 
         if year_results:
             year_df = pd.DataFrame(year_results)

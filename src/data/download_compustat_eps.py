@@ -101,35 +101,54 @@ def download_gvkey_map(engine, tickers: list[str]) -> pd.DataFrame:
 def download_fundq(
     engine, gvkeys: list[str], tickers: list[str],
     start_date: str = "2014-01-01",
+    gvkey_ticker_map: dict = None,
 ) -> pd.DataFrame:
     """Query comp.fundq for quarterly EPS data.
 
-    If gvkeys are provided, filters by gvkey (more reliable).
-    Otherwise falls back to ticker-based filtering.
+    If gvkeys are provided, queries fundq directly by gvkey (avoids
+    comp.security share-class duplicates). The ticker column is filled
+    from gvkey_ticker_map if available.
+    Otherwise falls back to ticker-based filtering via comp.security.
     """
     if gvkeys:
         gvkey_str = ", ".join(f"'{g}'" for g in gvkeys)
-        where_clause = f"a.gvkey IN ({gvkey_str})"
+        query = f"""
+            SELECT gvkey, datadate, rdq,
+                   epspxq, epsfiq, fyearq, fqtr
+            FROM comp.fundq
+            WHERE gvkey IN ({gvkey_str})
+              AND datadate >= '{start_date}'
+              AND datafmt = 'STD'
+              AND indfmt = 'INDL'
+              AND consol = 'C'
+              AND popsrc = 'D'
+            ORDER BY gvkey, datadate
+        """
+        df = pd.read_sql(query, engine)
+        df = df.drop_duplicates(subset=["gvkey", "datadate"], keep="first")
+        # Map gvkey → ticker
+        if gvkey_ticker_map:
+            df["tic"] = df["gvkey"].map(gvkey_ticker_map)
+        else:
+            df["tic"] = df["gvkey"]
     else:
         ticker_str = ", ".join(f"'{t}'" for t in tickers)
-        where_clause = f"b.tic IN ({ticker_str})"
+        query = f"""
+            SELECT a.gvkey, b.tic, a.datadate, a.rdq,
+                   a.epspxq, a.epsfiq, a.fyearq, a.fqtr
+            FROM comp.fundq a
+            JOIN comp.security b ON a.gvkey = b.gvkey
+            WHERE b.tic IN ({ticker_str})
+              AND a.datadate >= '{start_date}'
+              AND a.datafmt = 'STD'
+              AND a.indfmt = 'INDL'
+              AND a.consol = 'C'
+              AND a.popsrc = 'D'
+            ORDER BY b.tic, a.datadate
+        """
+        df = pd.read_sql(query, engine)
+        df = df.drop_duplicates(subset=["tic", "datadate"], keep="first")
 
-    query = f"""
-        SELECT a.gvkey, b.tic, a.datadate, a.rdq,
-               a.epspxq, a.epsfiq, a.fyearq, a.fqtr
-        FROM comp.fundq a
-        JOIN comp.security b ON a.gvkey = b.gvkey
-        WHERE {where_clause}
-          AND a.datadate >= '{start_date}'
-          AND a.datafmt = 'STD'
-          AND a.indfmt = 'INDL'
-          AND a.consol = 'C'
-          AND a.popsrc = 'D'
-        ORDER BY b.tic, a.datadate
-    """
-    df = pd.read_sql(query, engine)
-    # Drop duplicate rows (multiple gvkeys for same ticker-date)
-    df = df.drop_duplicates(subset=["tic", "datadate"], keep="first")
     print(f"fundq: {len(df)} rows for {df['tic'].nunique()} tickers")
     return df
 
@@ -194,7 +213,19 @@ def main():
             gvkeys = gvkey_map["gvkey"].unique().tolist()
 
         # 4. Download quarterly fundamentals
-        fundq = download_fundq(conn, gvkeys, tickers, start_date=start_date)
+        # Build gvkey→ticker map from universe if available
+        # Compustat gvkeys are zero-padded to 6 digits (e.g., '001690')
+        gvkey_ticker_map = None
+        if universe_path and universe_path.exists():
+            udf = pd.read_csv(universe_path)
+            gvkey_ticker_map = dict(
+                zip(udf["gvkey"].astype(str).str.zfill(6), udf["ticker"])
+            )
+            gvkeys = [str(g).zfill(6) for g in gvkeys]
+        fundq = download_fundq(
+            conn, gvkeys, tickers, start_date=start_date,
+            gvkey_ticker_map=gvkey_ticker_map,
+        )
         fundq_path = OUTPUT_DIR / "compustat_fundq.csv"
         fundq.to_csv(fundq_path, index=False)
         print(f"Saved: {fundq_path}")
