@@ -93,6 +93,9 @@ def run_concatenated_ar_baseline(
 
     stock_data = []
     for tkr, csv_path in ticker_csv_paths.items():
+        csv_path = Path(csv_path)
+        if not csv_path.exists():
+            continue
         target_var = target_template.replace("{TKR}", tkr)
         df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
         ts = load_target_series(df, target_var)

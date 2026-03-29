@@ -359,62 +359,54 @@ def objective(trial, config, csv_path, exp_path, suffix):
 # Concatenated (cross-sectional) helpers
 # ------------------------
 
+class _CachedDataset(torch.utils.data.Dataset):
+    """Thin wrapper around a list of pre-materialized sample dicts."""
+
+    def __init__(self, samples, var_map, freq_map):
+        self.samples = samples
+        self.var_map = var_map
+        self.freq_map = freq_map
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+
+def _resolve_cache_path(config, project_root):
+    suffix = getattr(config.equity, "suffix", "7D_43M_14Q")
+    return project_root / "data" / "processed" / f"concat_cache_{suffix}.pt"
+
+
 def prepare_concatenated_data(config, project_root):
-    """Build a ConcatDataset pooling all equity tickers for joint training."""
-    ticker_csv = resolve_all_equity_csv_paths(config, project_root)
-    target_template = config.equity.target_template
-    context_days = config.data.context_days
-    train_ratio = config.data.train_ratio
+    """Load pre-built cache or build ConcatDataset from scratch."""
+    cache_path = _resolve_cache_path(config, project_root)
 
-    # Build unified var/freq maps from first ticker
-    first_ticker = next(iter(ticker_csv))
-    first_csv = ticker_csv[first_ticker]
-    first_target = target_template.replace("{TKR}", first_ticker)
-    ref_ds = MixedFrequencyDataset(
-        first_csv, context_days=context_days,
-        target_variable=first_target, ticker=first_ticker,
-    )
-    unified_var_map = dict(ref_ds.var_map)
-    unified_freq_map = dict(ref_ds.freq_map)
+    if cache_path.exists():
+        print(f"[Concat] Loading cache from {cache_path.name}...")
+        cache = torch.load(cache_path, map_location="cpu", weights_only=False)
+        return _prepare_from_cache(cache, config)
 
-    # Load all datasets with shared maps
-    datasets = []
-    per_ticker_info = []  # (ticker, dataset_index, train_indices, test_indices)
-    global_offset = 0
+    # Fallback: build from CSVs (slow path)
+    print("[Concat] No cache found — building from CSVs...")
+    from src.data.build_concat_cache import build_concat_cache
+    cache = build_concat_cache(config, project_root)
+    # Save for next time
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(cache, cache_path)
+    print(f"[Concat] Saved cache to {cache_path.name}")
+    return _prepare_from_cache(cache, config)
 
-    for tkr, csv_path in ticker_csv.items():
-        target_var = target_template.replace("{TKR}", tkr)
-        ds = MixedFrequencyDataset(
-            csv_path, context_days=context_days,
-            target_variable=target_var, ticker=tkr,
-        )
-        ds.set_maps(unified_var_map, unified_freq_map)
 
-        n = len(ds)
-        if n == 0:
-            continue
+def _prepare_from_cache(cache, config):
+    """Build DataLoaders and metadata from a loaded cache dict."""
+    samples = cache["samples"]
+    per_ticker_info = cache["per_ticker_info"]
+    var_map = cache["var_map"]
+    freq_map = cache["freq_map"]
 
-        n_train = int(train_ratio * n)
-        local_train = list(range(n_train))
-        local_test = list(range(n_train, n))
-
-        ds.fit_scalers_from_train_items(local_train)
-
-        global_train = [i + global_offset for i in local_train]
-        global_test = [i + global_offset for i in local_test]
-
-        per_ticker_info.append({
-            "ticker": tkr,
-            "dataset_idx": len(datasets),
-            "local_train": local_train,
-            "local_test": local_test,
-            "global_train": global_train,
-            "global_test": global_test,
-        })
-        datasets.append(ds)
-        global_offset += n
-
-    concat_ds = torch.utils.data.ConcatDataset(datasets)
+    dataset = _CachedDataset(samples, var_map, freq_map)
 
     all_train = []
     all_test = []
@@ -423,17 +415,25 @@ def prepare_concatenated_data(config, project_root):
         all_test.extend(info["global_test"])
 
     batch_size = config.training.batch_size
-    train_loader = make_dataloader(concat_ds, all_train, batch_size, collate_batch)
-    test_loader = make_dataloader(concat_ds, all_test, batch_size, collate_batch)
+    train_loader = make_dataloader(dataset, all_train, batch_size, collate_batch)
+    test_loader = make_dataloader(dataset, all_test, batch_size, collate_batch)
 
-    return concat_ds, datasets, train_loader, test_loader, per_ticker_info
+    return dataset, per_ticker_info, train_loader, test_loader
 
 
-def evaluate_and_save_ticker(model, sub_dataset, local_test_indices, ticker_exp_path, suffix, device):
-    """Evaluate a concatenated model on one ticker's test set and save predictions."""
+def evaluate_and_save_ticker(model, dataset, ticker_info, ticker_exp_path, suffix, device):
+    """Evaluate a concatenated model on one ticker's test set and save predictions.
+
+    Works with both cached datasets (scaler stored as mean/scale floats in
+    ticker_info) and live MixedFrequencyDataset objects.
+    """
     ticker_exp_path.mkdir(parents=True, exist_ok=True)
+    global_test = ticker_info["global_test"]
+    if not global_test:
+        return
+
     test_loader = DataLoader(
-        torch.utils.data.Subset(sub_dataset, local_test_indices),
+        torch.utils.data.Subset(dataset, global_test),
         batch_size=32, shuffle=False, collate_fn=collate_batch,
     )
 
@@ -448,21 +448,16 @@ def evaluate_and_save_ticker(model, sub_dataset, local_test_indices, ticker_exp_
             preds.extend(out.tolist())
             targets.extend(batch['target'].tolist())
 
-    scaler = sub_dataset.scaler
-    preds_unscaled = scaler.inverse_transform(
-        np.array(preds).reshape(-1, 1)
-    ).flatten()
-    targets_unscaled = scaler.inverse_transform(
-        np.array(targets).reshape(-1, 1)
-    ).flatten()
+    # Inverse transform using cached scaler params
+    mean = ticker_info["target_scaler_mean"]
+    scale = ticker_info["target_scaler_scale"]
+    preds_unscaled = np.array(preds) * scale + mean
+    targets_unscaled = np.array(targets) * scale + mean
 
-    mask = sub_dataset.df['Variable'] == sub_dataset.target_variable
-    timestamps = sub_dataset.df[mask]['Timestamp'].reset_index(drop=True)
-    test_offset = local_test_indices[0] + sub_dataset.skipped_context
-    test_dates = timestamps.iloc[test_offset:test_offset + len(local_test_indices)].reset_index(drop=True)
+    test_dates = ticker_info.get("test_dates", list(range(len(preds))))
 
     pd.DataFrame({
-        'date': test_dates,
+        'date': test_dates[:len(preds)],
         'target': targets_unscaled,
         'predicted': preds_unscaled,
     }).to_csv(ticker_exp_path / f"transformer_preds_{suffix}.csv", index=False)
@@ -470,21 +465,19 @@ def evaluate_and_save_ticker(model, sub_dataset, local_test_indices, ticker_exp_
 
 def run_concatenated_training(config, project_root, exp_path, suffix):
     """Train one MPTE model on all tickers and evaluate per-ticker."""
-    concat_ds, datasets, train_loader, test_loader, per_ticker_info = \
+    dataset, per_ticker_info, train_loader, test_loader = \
         prepare_concatenated_data(config, project_root)
 
-    print(f"[Concat] {len(datasets)} stocks, "
-          f"{sum(len(info['global_train']) for info in per_ticker_info)} train / "
-          f"{sum(len(info['global_test']) for info in per_ticker_info)} test samples")
-
-    ref_ds = datasets[0]
+    n_train = sum(len(info['global_train']) for info in per_ticker_info)
+    n_test = sum(len(info['global_test']) for info in per_ticker_info)
+    print(f"[Concat] {len(per_ticker_info)} stocks, {n_train} train / {n_test} test samples")
 
     transformer_cfg = getattr(config.model, "transformer", None)
     use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
     use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
 
     model = build_model(
-        ref_ds, config,
+        dataset, config,
         config.model.transformer.d_model,
         config.model.transformer.nhead,
         config.model.transformer.num_layers,
@@ -547,9 +540,8 @@ def run_concatenated_training(config, project_root, exp_path, suffix):
     # Per-ticker evaluation
     for info in per_ticker_info:
         tkr = info["ticker"]
-        ds = datasets[info["dataset_idx"]]
         ticker_exp = exp_path / tkr
-        evaluate_and_save_ticker(model, ds, info["local_test"], ticker_exp, suffix, device)
+        evaluate_and_save_ticker(model, dataset, info, ticker_exp, suffix, device)
     print(f"[Concat] Per-ticker predictions saved under {exp_path}")
 
 

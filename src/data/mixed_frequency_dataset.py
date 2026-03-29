@@ -1,3 +1,5 @@
+import re
+
 import torch
 from torch.utils.data import Dataset
 import pandas as pd
@@ -34,10 +36,12 @@ class MixedFrequencyDataset(Dataset):
         self.ticker = ticker
         if ticker is not None:
             prefix = f"{ticker}_"
+            # Use regex with ^ anchor to only strip prefix at start of string
             self.df[variable_column] = self.df[variable_column].str.replace(
-                prefix, "", regex=False
+                f"^{re.escape(ticker)}_", "", regex=True
             )
-            target_variable = target_variable.replace(prefix, "")
+            if target_variable.startswith(prefix):
+                target_variable = target_variable[len(prefix):]
 
         if allowed_variables is not None:
             allowed_variables = set(allowed_variables)
@@ -228,6 +232,9 @@ class MixedFrequencyDataset(Dataset):
             # fallback: if a variable never appears in train contexts, fit on earliest available rows of that var
             if not mask_var_trainctx.any():
                 mask_var_trainctx = (self.df[self.variable_column] == var) & (self.df["time_id"] <= cutoff)
+            # final fallback: use all rows for that variable
+            if not mask_var_trainctx.any():
+                mask_var_trainctx = (self.df[self.variable_column] == var)
             scaler = StandardScaler().fit(self.df.loc[mask_var_trainctx, [self.value_column]])
             self.scalers[var] = scaler
         

@@ -258,7 +258,8 @@ def run_concatenated_single_freq_baselines(
         except Exception:
             continue
         # Strip ticker prefix from column names
-        wide = wide.rename(columns=lambda c: c.replace(f"{tkr}_", ""))
+        prefix = f"{tkr}_"
+        wide = wide.rename(columns=lambda c, p=prefix: c[len(p):] if c.startswith(p) else c)
         n_total = len(wide)
         if n_total < 4:
             continue
