@@ -177,12 +177,22 @@ def resolve_equity_data_paths(
     return csv_path, suffix, target
 
 
+def resolve_all_equity_csv_paths(
+    config, project_root: Path
+) -> dict:
+    """Return ``{ticker: csv_path}`` for every ticker in the universe."""
+    tickers = resolve_equity_tickers(config)
+    suffix = getattr(config.equity, "suffix", "7D_43M_14Q")
+    template = config.paths.data_processed_equity_template
+    return {t: project_root / template.format(ticker=t, suffix=suffix) for t in tickers}
+
+
 def resolve_equity_tickers(config) -> List[str]:
     """Return the full ticker universe from universe_file or config.equity.tickers."""
     universe_file = getattr(config.equity, "universe_file", None)
     if universe_file:
-        import pandas as pd
-        universe_path = project_root / universe_file
+        _project_root = Path(__file__).resolve().parents[2]
+        universe_path = _project_root / universe_file
         if universe_path.exists():
             return pd.read_csv(universe_path)["ticker"].tolist()
     return list(config.equity.tickers)

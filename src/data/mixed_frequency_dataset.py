@@ -26,8 +26,18 @@ class MixedFrequencyDataset(Dataset):
         target_variable: str = "Y",
         allowed_variables: Union[None, List[str], set] = None,
         allowed_frequencies: Union[None, List[str], set] = None,
+        ticker: str = None,
     ):
         self.df = pd.read_csv(csv_path, parse_dates=[time_column])
+
+        # Strip ticker prefix for cross-sectional pooling (e.g., AAPL_ret -> ret)
+        self.ticker = ticker
+        if ticker is not None:
+            prefix = f"{ticker}_"
+            self.df[variable_column] = self.df[variable_column].str.replace(
+                prefix, "", regex=False
+            )
+            target_variable = target_variable.replace(prefix, "")
 
         if allowed_variables is not None:
             allowed_variables = set(allowed_variables)
@@ -91,6 +101,12 @@ class MixedFrequencyDataset(Dataset):
     def inverse_transform(self, var_name: str, values: np.ndarray) -> np.ndarray:
         return self.scalers[var_name].inverse_transform(values.reshape(-1, 1)).flatten()
 
+    def set_maps(self, var_map: Dict[str, int], freq_map: Dict[str, int]):
+        """Override embedding maps with unified ones for cross-sectional pooling."""
+        self.var_map = var_map
+        self.freq_map = freq_map
+        self.df["freq_id"] = self.df[self.freq_column].map(self.freq_map)
+        self.df["var_id"] = self.df[self.variable_column].map(self.var_map)
 
     def _resolve_context_days(self, requested_span: int) -> int:
         """Return an effective context span measured in the dataset's time units."""

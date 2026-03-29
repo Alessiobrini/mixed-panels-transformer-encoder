@@ -208,6 +208,235 @@ def run_single_freq_baselines(
 
 
 # ---------------------------------------------------------------------------
+# Concatenated (cross-sectional) baselines
+# ---------------------------------------------------------------------------
+def _build_quarterly_wide(csv_path, target_var):
+    """Pivot long-format CSV quarterly rows into wide format."""
+    df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+    q = df[df["Frequency"] == "Q"].copy()
+    wide = q.pivot_table(index="Timestamp", columns="Variable", values="Value")
+    wide = wide.sort_index().ffill()
+    wide = wide.dropna(subset=[target_var])
+    wide.index.name = "date"
+    return wide
+
+
+def run_concatenated_single_freq_baselines(
+    ticker_csv_paths: dict,
+    target_template: str,
+    train_ratio: float,
+    exp_path,
+    suffix: str,
+    n_lags: int = 2,
+    optimize: bool = True,
+    val_ratio: float = 0.1,
+    seed: int = SEED,
+):
+    """Pooled OLS / XGBoost / NN across all stocks.
+
+    Each stock's quarterly-wide data has ticker prefixes stripped so all
+    share the same column names. The pooled model is trained on stacked
+    data and predictions are saved per ticker.
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    exp_path = Path(exp_path)
+
+    # --- Stack all stocks ---
+    generic_target = target_template.split("_", 1)[1] if "_" in target_template else target_template
+    # The target template is e.g. "{TKR}_eps_yoy", generic is "eps_yoy"
+    generic_target = target_template.replace("{TKR}_", "")
+
+    all_train, all_test = [], []
+    ticker_test_meta = []  # (ticker, test_dates, y_test)
+
+    for tkr, csv_path in ticker_csv_paths.items():
+        target_var = target_template.replace("{TKR}", tkr)
+        try:
+            wide = _build_quarterly_wide(csv_path, target_var)
+        except Exception:
+            continue
+        # Strip ticker prefix from column names
+        wide = wide.rename(columns=lambda c: c.replace(f"{tkr}_", ""))
+        n_total = len(wide)
+        if n_total < 4:
+            continue
+        n_train = int(n_total * train_ratio)
+        df_train = wide.iloc[:n_train]
+        df_test = wide.iloc[n_train:]
+        all_train.append(df_train)
+        all_test.append(df_test)
+        ticker_test_meta.append({
+            "ticker": tkr,
+            "n_test": len(df_test),
+        })
+
+    if not all_train:
+        print("  No stocks with sufficient data for single-freq baselines")
+        return
+
+    stacked_train = pd.concat(all_train, axis=0)
+    stacked_test = pd.concat(all_test, axis=0)
+
+    # --- Lag features ---
+    all_vars = list(stacked_train.columns)
+    def _add_lags(df):
+        lagged = {}
+        for var in all_vars:
+            for lag in range(1, n_lags + 1):
+                lagged[f"{var}_lag{lag}"] = df[var].shift(lag)
+        return pd.concat([df[[generic_target]], pd.DataFrame(lagged, index=df.index)], axis=1).dropna()
+
+    # Build lags per stock block (to avoid cross-stock contamination)
+    train_blocks, test_blocks = [], []
+    train_offset = 0
+    test_offset = 0
+    for i, meta in enumerate(ticker_test_meta):
+        n_tr = len(all_train[i])
+        n_te = len(all_test[i])
+        # Combine train+test for this stock to compute lags correctly
+        stock_df = pd.concat([all_train[i], all_test[i]], axis=0)
+        stock_lagged = _add_lags(stock_df)
+        # Split back — rows from train portion vs test portion
+        # After dropna from lag creation, we need to re-identify train vs test
+        stock_dates = stock_df.index
+        train_dates = set(all_train[i].index)
+        tr_mask = stock_lagged.index.isin(train_dates)
+        train_blocks.append(stock_lagged[tr_mask])
+        test_blocks.append(stock_lagged[~tr_mask])
+        train_offset += n_tr
+        test_offset += n_te
+
+    model_train = pd.concat(train_blocks, axis=0)
+    model_test_list = test_blocks  # keep separate for per-stock prediction saving
+
+    feature_cols = [c for c in model_train.columns if c != generic_target]
+    X_train = model_train[feature_cols].values
+    y_train = model_train[generic_target].values
+
+    # Validation split from training data
+    if optimize:
+        n_val = max(1, int(len(X_train) * val_ratio))
+        X_val = X_train[-n_val:]
+        y_val = y_train[-n_val:]
+        X_train_fit = X_train[:-n_val]
+        y_train_fit = y_train[:-n_val]
+    else:
+        X_train_fit = X_train
+        y_train_fit = y_train
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_fit)
+    if optimize:
+        X_val_scaled = scaler.transform(X_val)
+
+    # --- Helper to save per-ticker predictions ---
+    def _save_per_ticker(model_name, all_preds):
+        offset = 0
+        for i, meta in enumerate(ticker_test_meta):
+            block = model_test_list[i]
+            n = len(block)
+            if n == 0:
+                offset += 0
+                continue
+            ticker_preds = all_preds[offset:offset + n]
+            ticker_exp = exp_path / meta["ticker"]
+            ticker_exp.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame({
+                "date": block.index,
+                "target": block[generic_target].values,
+                "predicted": ticker_preds,
+            }).to_csv(ticker_exp / f"{model_name}_preds_{suffix}.csv", index=False)
+            offset += n
+
+    # Combine all test blocks for model prediction
+    model_test = pd.concat(model_test_list, axis=0)
+    X_test = model_test[feature_cols].values
+    y_test = model_test[generic_target].values
+    X_test_scaled = scaler.transform(X_test)
+
+    # --- 1. OLS ---
+    ols = LinearRegression()
+    ols.fit(X_train_scaled, y_train_fit)
+    ols_preds = ols.predict(X_test_scaled)
+    _save_per_ticker("ols", ols_preds)
+
+    # --- 2. XGBoost ---
+    if optimize:
+        xgb_grid = {
+            "n_estimators": [50, 100, 150],
+            "max_depth": [3, 5, 7],
+            "learning_rate": [0.05, 0.1, 0.2],
+        }
+        best_rmse, best_params = float("inf"), None
+        for params in ParameterGrid(xgb_grid):
+            tmp = XGBRegressor(**params, random_state=seed)
+            tmp.fit(X_train_fit, y_train_fit)
+            rmse = np.sqrt(mean_squared_error(y_val, tmp.predict(X_val)))
+            if rmse < best_rmse:
+                best_rmse, best_params = rmse, params
+        xgb_final = XGBRegressor(**best_params, random_state=seed)
+        xgb_final.fit(X_train, y_train)  # retrain on full train (incl val)
+    else:
+        xgb_final = XGBRegressor(
+            n_estimators=100, max_depth=3, learning_rate=0.1, random_state=seed
+        )
+        xgb_final.fit(X_train_fit, y_train_fit)
+    xgb_preds = xgb_final.predict(X_test)
+    _save_per_ticker("xgb", xgb_preds)
+
+    # --- 3. NN ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_dim = X_train_scaled.shape[1]
+    X_train_t = torch.tensor(X_train_scaled, dtype=torch.float32).to(device)
+    y_train_t = torch.tensor(y_train_fit, dtype=torch.float32).unsqueeze(1).to(device)
+    X_test_t = torch.tensor(X_test_scaled, dtype=torch.float32).to(device)
+    crit = nn.MSELoss()
+
+    if optimize:
+        nn_grid = [
+            {"h1": 64, "h2": 32, "lr": 1e-3},
+            {"h1": 128, "h2": 64, "lr": 1e-4},
+        ]
+        X_val_t = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        y_val_t = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1).to(device)
+        best_loss, best_model = float("inf"), None
+        for cfg in nn_grid:
+            net = SimpleNN(input_dim, cfg["h1"], cfg["h2"]).to(device)
+            opt = torch.optim.Adam(net.parameters(), lr=cfg["lr"])
+            for _ in range(100):
+                net.train()
+                loss = crit(net(X_train_t), y_train_t)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+            net.eval()
+            with torch.no_grad():
+                val_loss = crit(net(X_val_t), y_val_t).item()
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_model = net
+        final_model = best_model
+    else:
+        final_model = SimpleNN(input_dim).to(device)
+        opt = torch.optim.Adam(final_model.parameters(), lr=1e-4)
+        for _ in range(100):
+            final_model.train()
+            loss = crit(final_model(X_train_t), y_train_t)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+    final_model.eval()
+    with torch.no_grad():
+        nn_preds = final_model(X_test_t).cpu().numpy().flatten()
+    _save_per_ticker("nn", nn_preds)
+
+    print(f"  Concatenated single-freq baselines saved for {len(ticker_test_meta)} stocks")
+
+
+# ---------------------------------------------------------------------------
 # Original __main__ for FRED experiments (unchanged behavior)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":

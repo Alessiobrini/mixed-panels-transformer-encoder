@@ -13,6 +13,8 @@ simulation:
 
 equity:
   active_ticker: AAPL
+  training_mode: "concatenated"         # "per_ticker" or "concatenated"
+  universe_file: "data/raw/equity/universe_500.csv"
   suffix: "7D_43M_14Q"
   target_template: "{TKR}_eps_yoy"
   tickers:

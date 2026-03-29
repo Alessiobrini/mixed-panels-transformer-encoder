@@ -30,13 +30,18 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.config import Config
 from src.utils.data_paths import (
+    resolve_all_equity_csv_paths,
     resolve_equity_data_paths,
     resolve_equity_tickers,
 )
-from src.models.ar import run_ar_baseline
-from src.models.single_freq_models import run_single_freq_baselines
+from src.models.ar import run_ar_baseline, run_concatenated_ar_baseline
+from src.models.single_freq_models import (
+    run_single_freq_baselines,
+    run_concatenated_single_freq_baselines,
+)
 from src.train import (
     run_standard_training,
+    run_concatenated_training,
     run_optuna,
 )
 from src.evaluation.evaluate_forecasts import (
@@ -312,6 +317,100 @@ def _evaluate_ticker(config, exp_path: Path, suffix: str):
 
 
 # ---------------------------------------------------------------------------
+# Concatenated (cross-sectional) experiment
+# ---------------------------------------------------------------------------
+def run_concatenated(config, today: str, cfg_path: Path):
+    """Train one model on all stocks pooled, then evaluate per-ticker."""
+    suffix = config.equity.suffix
+    ticker_csv = resolve_all_equity_csv_paths(config, project_root)
+
+    exp_name = f"concat_{today}"
+    exp_path = project_root / "outputs" / "experiments" / exp_name
+    exp_path.mkdir(parents=True, exist_ok=True)
+    shutil.copy(cfg_path, exp_path / "used_config.yaml")
+
+    print(f"\n{'=' * 60}")
+    print(f"  Concatenated training | {len(ticker_csv)} stocks | Exp: {exp_name}")
+    print(f"{'=' * 60}")
+
+    # --- 1. MPTE Transformer ---
+    print("\n--- MPTE Transformer (concatenated) ---")
+    try:
+        run_concatenated_training(config, project_root, exp_path, suffix)
+    except Exception as e:
+        print(f"  ERROR in concatenated transformer training: {e}")
+
+    # --- 2. AR Baseline (pooled) ---
+    print("\n--- AR Baseline (concatenated) ---")
+    try:
+        run_concatenated_ar_baseline(
+            ticker_csv,
+            config.equity.target_template,
+            config.data.train_ratio,
+            config.model.ar.max_lag,
+            exp_path,
+            suffix,
+        )
+    except Exception as e:
+        print(f"  ERROR in concatenated AR: {e}")
+
+    # --- 3. MIDAS --- skip in concatenated mode
+    print("\n--- MIDAS: SKIPPED (not supported in concatenated mode) ---")
+
+    # --- 4. Single-freq baselines (OLS, XGB, NN) ---
+    print("\n--- Single-freq baselines (concatenated OLS, XGB, NN) ---")
+    try:
+        sf_cfg = getattr(config, "single_freq", None)
+        n_lags = getattr(sf_cfg, "n_lags", 2) if sf_cfg else 2
+        sf_optimize = getattr(sf_cfg, "optimize", True) if sf_cfg else True
+        sf_val = getattr(sf_cfg, "val_ratio", 0.1) if sf_cfg else 0.1
+
+        run_concatenated_single_freq_baselines(
+            ticker_csv,
+            config.equity.target_template,
+            config.data.train_ratio,
+            exp_path,
+            suffix,
+            n_lags=n_lags,
+            optimize=sf_optimize,
+            val_ratio=sf_val,
+        )
+    except Exception as e:
+        print(f"  ERROR in concatenated single-freq baselines: {e}")
+
+    # --- 5. Per-ticker evaluation ---
+    print("\n--- Per-ticker evaluation ---")
+    tickers_evaluated = 0
+    for tkr in ticker_csv:
+        ticker_exp = exp_path / tkr
+        if not ticker_exp.exists():
+            continue
+        try:
+            _evaluate_ticker(config, ticker_exp, suffix)
+            tickers_evaluated += 1
+        except Exception as e:
+            print(f"  ERROR evaluating {tkr}: {e}")
+
+    # --- 6. Aggregate RMSE across stocks ---
+    print("\n--- Aggregate RMSE ---")
+    rmse_rows = []
+    for tkr in ticker_csv:
+        rmse_path = exp_path / tkr / "rmse_summary.csv"
+        if rmse_path.exists():
+            df = pd.read_csv(rmse_path)
+            df.insert(0, "ticker", tkr)
+            rmse_rows.append(df)
+    if rmse_rows:
+        agg = pd.concat(rmse_rows, ignore_index=True)
+        agg.to_csv(exp_path / "aggregate_rmse.csv", index=False)
+        # Print mean RMSE per model
+        print(agg.groupby(agg.columns[1]).mean(numeric_only=True).to_string())
+        print(f"\n  Aggregate RMSE saved to {exp_path / 'aggregate_rmse.csv'}")
+
+    print(f"\nConcatenated experiment complete: {tickers_evaluated} tickers evaluated.")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -325,17 +424,20 @@ def main():
     set_seeds(config.training.seed)
     today = datetime.now().strftime("%Y-%m-%d")
 
-    if args.ticker:
-        tickers = [args.ticker]
+    training_mode = getattr(config.equity, "training_mode", "per_ticker")
+
+    if training_mode == "concatenated" and not args.ticker:
+        print(f"Equity pipeline: CONCATENATED mode, date={today}")
+        run_concatenated(config, today, cfg_path)
     else:
-        tickers = resolve_equity_tickers(config)
-
-    print(f"Equity pipeline: {len(tickers)} ticker(s), date={today}")
-
-    for ticker in tickers:
-        run_ticker(config, ticker, today, cfg_path)
-
-    print(f"\nAll {len(tickers)} ticker(s) completed.")
+        if args.ticker:
+            tickers = [args.ticker]
+        else:
+            tickers = resolve_equity_tickers(config)
+        print(f"Equity pipeline: {len(tickers)} ticker(s), date={today}")
+        for ticker in tickers:
+            run_ticker(config, ticker, today, cfg_path)
+        print(f"\nAll {len(tickers)} ticker(s) completed.")
 
 
 if __name__ == "__main__":

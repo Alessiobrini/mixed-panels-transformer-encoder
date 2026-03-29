@@ -79,6 +79,99 @@ def run_ar_baseline(csv_path, target_var, train_ratio, max_lag, output_path):
 
 
 # ------------------------
+# Concatenated (cross-sectional) AR
+# ------------------------
+def run_concatenated_ar_baseline(
+    ticker_csv_paths, target_template, train_ratio, max_lag, exp_path, suffix
+):
+    """Fit a single pooled AR on demeaned quarterly targets across all stocks.
+
+    Each stock's series is demeaned by its training-set mean before pooling.
+    At prediction time the per-stock mean is added back.
+    """
+    import numpy as np
+
+    stock_data = []
+    for tkr, csv_path in ticker_csv_paths.items():
+        target_var = target_template.replace("{TKR}", tkr)
+        df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+        ts = load_target_series(df, target_var)
+        n = len(ts)
+        if n < 4:
+            continue
+        split = int(n * train_ratio)
+        train_vals = ts["Value"][:split]
+        test_vals = ts["Value"][split:]
+        test_dates = ts["Timestamp"][split:]
+        mu = train_vals.mean()
+        stock_data.append({
+            "ticker": tkr,
+            "train_dm": (train_vals - mu).reset_index(drop=True),
+            "test_vals": test_vals.reset_index(drop=True),
+            "test_dates": test_dates.reset_index(drop=True),
+            "mu": mu,
+            "n_test": len(test_vals),
+        })
+
+    # Pool demeaned training series
+    pooled_train = pd.concat(
+        [s["train_dm"] for s in stock_data], ignore_index=True
+    )
+
+    # Fit single AR
+    ar_preds_raw, selected_lag, _, _ = fit_ar_with_optimal_lag(
+        pooled_train, pd.Series(np.zeros(1)), max_lag
+    )
+
+    # For per-stock forecasting: use the pooled AR coefficients but
+    # predict from each stock's own recent history
+    from statsmodels.tsa.ar_model import AutoReg
+
+    if selected_lag == 0:
+        # Mean predictor — just use per-stock training mean
+        for s in stock_data:
+            tkr = s["ticker"]
+            n_test = s["n_test"]
+            preds = pd.Series([s["mu"]] * n_test)
+            ticker_exp = Path(exp_path) / tkr
+            ticker_exp.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame({
+                "date": s["test_dates"],
+                "target": s["test_vals"].values,
+                "predicted": preds.values,
+            }).to_csv(ticker_exp / f"ar_preds_{suffix}.csv", index=False)
+        print(f"  Concatenated AR(0) — mean predictor for {len(stock_data)} stocks")
+        return
+
+    # Refit on pooled with selected lag to get parameters
+    pooled_model = AutoReg(pooled_train, lags=selected_lag).fit()
+
+    for s in stock_data:
+        tkr = s["ticker"]
+        full_dm = s["train_dm"]
+        n_train = len(full_dm)
+        n_test = s["n_test"]
+
+        # Predict out-of-sample from this stock's demeaned series
+        preds_dm = pooled_model.predict(start=n_train, end=n_train + n_test - 1)
+        # If predict returns fewer values (edge case), pad with last known
+        if len(preds_dm) < n_test:
+            last = preds_dm.iloc[-1] if len(preds_dm) > 0 else 0.0
+            preds_dm = pd.concat([preds_dm, pd.Series([last] * (n_test - len(preds_dm)))])
+        preds = preds_dm.values[:n_test] + s["mu"]
+
+        ticker_exp = Path(exp_path) / tkr
+        ticker_exp.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({
+            "date": s["test_dates"],
+            "target": s["test_vals"].values,
+            "predicted": preds,
+        }).to_csv(ticker_exp / f"ar_preds_{suffix}.csv", index=False)
+
+    print(f"  Concatenated AR({selected_lag}) saved for {len(stock_data)} stocks")
+
+
+# ------------------------
 # Main script
 # ------------------------
 if __name__ == "__main__":
