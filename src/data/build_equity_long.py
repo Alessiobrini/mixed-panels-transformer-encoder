@@ -1,39 +1,52 @@
 """
 Build per-stock long-format CSVs for the equity earnings dataset.
 
+Sources daily data from CRSP + WRDS IID (Intraday Indicators).
+
 Combines:
-  - Daily features from VOLARE realized variance data
-  - Monthly stock-level aggregates + cross-sectional aggregates
+  - Daily returns/volume from CRSP (crsp_dsf.parquet)
+  - Daily realized variance from WRDS Intraday Indicators (iid_rv.parquet)
+  - Monthly stock-level aggregates (computed from daily)
+  - Cross-sectional monthly aggregates (computed across all stocks)
   - Monthly macro features from FRED-MD (transf_md.csv)
   - Quarterly macro features from FRED-QD (transf_qd.csv)
   - Quarterly EPS target from Compustat
 
-Output: data/processed/equity/long_format_{TKR}_7D_43M_14Q.csv  (one per stock)
+Output: data/processed/equity/long_format_{TKR}_{N}D_{M}M_{Q}Q.csv
 
 Usage:
-    python src/data/build_equity_long.py
+    python src/data/build_equity_long_v2.py
+    python src/data/build_equity_long_v2.py --universe data/raw/equity/universe_100.csv
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from scipy.stats import skew
+from tqdm import tqdm
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.append(str(project_root))
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths (defaults, can be overridden via args)
 # ---------------------------------------------------------------------------
-VOLARE_PATH = project_root / "data" / "raw" / "volare" / "realized_variance_stocks.csv"
-COMPUSTAT_PATH = project_root / "data" / "raw" / "equity" / "compustat_fundq.csv"
+DEFAULT_UNIVERSE = project_root / "data" / "raw" / "equity" / "universe_100.csv"
+DEFAULT_CRSP = project_root / "data" / "raw" / "equity" / "crsp_dsf.parquet"
+DEFAULT_IID = project_root / "data" / "raw" / "equity" / "taq_rv.parquet"
+DEFAULT_COMPUSTAT = project_root / "data" / "raw" / "equity" / "compustat_fundq.csv"
 FRED_MD_PATH = project_root / "data" / "raw" / "fred_data" / "transf_md.csv"
 FRED_QD_PATH = project_root / "data" / "raw" / "fred_data" / "transf_qd.csv"
 OUTPUT_DIR = project_root / "data" / "processed" / "equity"
 
-# The 35 monthly macro variables from the existing FRED-MD setup
+START_DATE = "2014-01-01"
+MIN_MONTHLY_OBS = 15  # minimum daily observations to form a valid month
+
+# Same macro variable lists as build_equity_long.py
 MACRO_MONTHLY_VARS = [
     "RPI", "INDPRO", "CUMFNS", "HWI", "CLF16OV", "CE16OV", "UEMPMEAN",
     "CLAIMSx", "PAYEMS", "CES0600000007", "CES0600000008", "CES2000000008",
@@ -43,126 +56,176 @@ MACRO_MONTHLY_VARS = [
     "OILPRICEx", "S&P 500", "S&P PE ratio", "TB3MS", "TB6MS",
 ]
 
-# The 13 quarterly macro variables from the existing FRED-QD setup
 MACRO_QUARTERLY_VARS = [
     "GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE",
     "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL", "FPIx", "EXPGSC1", "IMPGSC1",
 ]
 
-# Daily features to extract from VOLARE (besides computed ones)
-VOLARE_RV_COLS = ["rv5", "bv5", "rsp5", "rsn5", "rk"]
-
 
 # ---------------------------------------------------------------------------
 # Daily features
 # ---------------------------------------------------------------------------
-def build_daily_features(volare_stock: pd.DataFrame, ticker: str) -> pd.DataFrame:
+def build_daily_features(
+    crsp_stock: pl.DataFrame,
+    iid_stock: pl.DataFrame,
+    ticker: str,
+) -> pd.DataFrame:
+    """Build 7 daily features from CRSP + IID for one stock.
+
+    Returns long-format pd.DataFrame [Timestamp, Variable, Value, Frequency].
     """
-    Build daily feature DataFrame for one stock from VOLARE data.
+    # Inner-join on date — only keep days with both CRSP and IID data
+    daily = crsp_stock.join(iid_stock, on="date", how="inner").sort("date")
 
-    Returns a long-format DataFrame with columns:
-        Timestamp, Variable, Value, Frequency
-    """
-    df = volare_stock.sort_values("date").copy()
+    if daily.is_empty():
+        print(f"  WARNING: no overlapping CRSP+IID data for {ticker}")
+        return pd.DataFrame(columns=["Timestamp", "Variable", "Value", "Frequency"])
 
-    # Log return from close prices
-    df[f"{ticker}_ret"] = np.log(df["close_price"] / df["close_price"].shift(1))
+    # Compute log return from CRSP simple return: log(1 + ret)
+    daily = daily.with_columns(
+        pl.col("ret").map_elements(
+            lambda r: float(np.log(1 + r)) if r is not None and r > -1 else None,
+            return_dtype=pl.Float64,
+        ).alias("log_ret")
+    )
 
-    # RV measures (rename to ticker-prefixed)
-    for col in VOLARE_RV_COLS:
-        df[f"{ticker}_{col}"] = df[col]
+    # Compute log volume
+    daily = daily.with_columns(
+        pl.col("vol").clip(lower_bound=1).log().alias("logvol")
+    )
 
-    # Log volume
-    df[f"{ticker}_logvol"] = np.log(df["volume"].clip(lower=1))
+    daily = daily.drop_nulls(subset=["log_ret"])
 
-    # Drop the first row (NaN return)
-    df = df.dropna(subset=[f"{ticker}_ret"])
+    # Build feature columns with ticker prefix
+    feature_map = {
+        f"{ticker}_ret": "log_ret",
+        f"{ticker}_rv5": "rv5",
+        f"{ticker}_bv5": "bv5",
+        f"{ticker}_rsp5": "rsp5",
+        f"{ticker}_rsn5": "rsn5",
+        f"{ticker}_rk": "rk",
+        f"{ticker}_logvol": "logvol",
+    }
 
-    # Select only the feature columns
-    feature_cols = [f"{ticker}_ret"] + [f"{ticker}_{c}" for c in VOLARE_RV_COLS] + [f"{ticker}_logvol"]
+    # Convert to pandas for melt (small per-stock data)
+    pdf = daily.select(["date"] + list(feature_map.values())).to_pandas()
+    pdf = pdf.rename(columns={v: k for k, v in feature_map.items()})
 
-    long = df[["date"] + feature_cols].melt(
+    long = pdf.melt(
         id_vars="date",
         var_name="Variable",
         value_name="Value",
     )
     long.rename(columns={"date": "Timestamp"}, inplace=True)
     long["Frequency"] = "D"
-    return long
+    return long.dropna(subset=["Value"])
 
 
 # ---------------------------------------------------------------------------
 # Monthly stock-level aggregates
 # ---------------------------------------------------------------------------
-def build_monthly_stock_features(volare_stock: pd.DataFrame, ticker: str) -> pd.DataFrame:
+def build_monthly_stock_features(
+    crsp_stock: pl.DataFrame,
+    iid_stock: pl.DataFrame,
+    ticker: str,
+) -> pd.DataFrame:
+    """Aggregate daily data to monthly per-stock features.
+
+    Returns wide pd.DataFrame with Timestamp + 5 feature columns.
     """
-    Aggregate daily data to monthly per-stock features.
+    daily = crsp_stock.join(iid_stock, on="date", how="inner").sort("date")
 
-    Returns a wide DataFrame indexed by year-month with columns:
-        {TKR}_ret_m, {TKR}_rv5_mean, {TKR}_rv5_max, {TKR}_ret_skew, {TKR}_jump_ratio
-    Plus a 'Timestamp' column (last trading day of each month).
-    """
-    df = volare_stock.sort_values("date").copy()
-    df["log_ret"] = np.log(df["close_price"] / df["close_price"].shift(1))
-    df = df.dropna(subset=["log_ret"])
-    df["ym"] = df["date"].dt.to_period("M")
+    if daily.is_empty():
+        return pd.DataFrame()
 
-    monthly = df.groupby("ym").agg(
-        Timestamp=("date", "max"),
-        ret_m=("log_ret", "sum"),
-        rv5_mean=("rv5", "mean"),
-        rv5_max=("rv5", "max"),
-        ret_skew=("log_ret", lambda x: skew(x, bias=False) if len(x) >= 3 else 0.0),
-        jump_ratio_mean=("rv5", lambda x: np.nan),  # placeholder, computed below
-    ).reset_index(drop=True)
+    daily = daily.with_columns(
+        pl.col("ret").map_elements(
+            lambda r: float(np.log(1 + r)) if r is not None and r > -1 else None,
+            return_dtype=pl.Float64,
+        ).alias("log_ret"),
+        pl.col("date").dt.strftime("%Y-%m").alias("ym"),
+    )
 
-    # Jump ratio: mean of (rv5 - bv5) / rv5, computed from daily data
-    jump = df.copy()
-    jump["jump"] = (jump["rv5"] - jump["bv5"]) / jump["rv5"].clip(lower=1e-12)
-    jump_monthly = jump.groupby("ym")["jump"].mean().reset_index()
-    jump_monthly.columns = ["ym_tmp", "jump_ratio"]
+    daily = daily.with_columns(
+        ((pl.col("rv5") - pl.col("bv5")) / pl.col("rv5").clip(lower_bound=1e-12))
+        .alias("jump")
+    )
 
-    # Re-derive ym for join
-    monthly["ym_tmp"] = df.groupby("ym")["date"].first().values
-    # Actually, simpler: just merge on index order since both are sorted by ym
-    monthly["jump_ratio"] = jump_monthly["jump_ratio"].values
-    monthly.drop(columns=["jump_ratio_mean", "ym_tmp"], inplace=True)
+    daily = daily.drop_nulls(subset=["log_ret"])
 
-    # Rename to ticker-prefixed
-    monthly.rename(columns={
-        "ret_m": f"{ticker}_ret_m",
-        "rv5_mean": f"{ticker}_rv5_mean",
-        "rv5_max": f"{ticker}_rv5_max",
-        "ret_skew": f"{ticker}_ret_skew",
-        "jump_ratio": f"{ticker}_jump_ratio",
-    }, inplace=True)
+    # Group by month
+    monthly = (
+        daily.group_by("ym")
+        .agg(
+            pl.col("date").max().alias("Timestamp"),
+            pl.col("log_ret").sum().alias("ret_m"),
+            pl.col("rv5").mean().alias("rv5_mean"),
+            pl.col("rv5").max().alias("rv5_max"),
+            pl.col("log_ret").alias("_rets_list"),
+            pl.col("jump").mean().alias("jump_ratio"),
+            pl.len().alias("n_obs"),
+        )
+        .filter(pl.col("n_obs") >= MIN_MONTHLY_OBS)
+        .sort("Timestamp")
+    )
 
-    return monthly
+    if monthly.is_empty():
+        return pd.DataFrame()
+
+    # Compute skewness from the list of returns
+    pdf = monthly.to_pandas()
+    pdf["ret_skew"] = pdf["_rets_list"].apply(
+        lambda x: skew(x, bias=False) if len(x) >= 3 else 0.0
+    )
+
+    # Rename with ticker prefix
+    result = pd.DataFrame({
+        "Timestamp": pdf["Timestamp"],
+        f"{ticker}_ret_m": pdf["ret_m"],
+        f"{ticker}_rv5_mean": pdf["rv5_mean"],
+        f"{ticker}_rv5_max": pdf["rv5_max"],
+        f"{ticker}_ret_skew": pdf["ret_skew"],
+        f"{ticker}_jump_ratio": pdf["jump_ratio"],
+    })
+
+    return result
 
 
-def compute_all_monthly_stock_features(volare: pd.DataFrame, tickers: list[str]) -> dict[str, pd.DataFrame]:
-    """Compute monthly stock features for all tickers. Returns dict of ticker -> DataFrame."""
+def compute_all_monthly_stock_features(
+    crsp: pl.DataFrame,
+    iid: pl.DataFrame,
+    universe: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    """Compute monthly stock features for all tickers."""
     result = {}
-    for ticker in tickers:
-        stock_data = volare[volare["symbol"] == ticker].copy()
-        if stock_data.empty:
-            print(f"  WARNING: no VOLARE data for {ticker}")
+    for _, row in universe.iterrows():
+        permno = row["permno"]
+        ticker = row["ticker"]
+
+        crsp_stock = crsp.filter(pl.col("permno") == permno)
+        iid_stock = iid.filter(pl.col("permno") == permno)
+
+        if crsp_stock.is_empty():
+            print(f"  WARNING: no CRSP data for {ticker} (permno={permno})")
             continue
-        result[ticker] = build_monthly_stock_features(stock_data, ticker)
+
+        mf = build_monthly_stock_features(crsp_stock, iid_stock, ticker)
+        if not mf.empty:
+            result[ticker] = mf
+
     return result
 
 
 # ---------------------------------------------------------------------------
 # Cross-sectional monthly aggregates
 # ---------------------------------------------------------------------------
-def build_cross_sectional_monthly(monthly_by_ticker: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """
-    Compute equal-weighted cross-sectional monthly aggregates.
+def build_cross_sectional_monthly(
+    monthly_by_ticker: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Compute equal-weighted cross-sectional monthly aggregates.
 
-    Returns long-format DataFrame with variables:
-        MKT_ret_m, MKT_rv5_mean, MKT_rv5_disp
+    Returns long-format DataFrame with MKT_ret_m, MKT_rv5_mean, MKT_rv5_disp.
     """
-    # Build a panel: rows = months, columns = tickers, for each metric
     all_ret = {}
     all_rv5 = {}
 
@@ -185,19 +248,14 @@ def build_cross_sectional_monthly(monthly_by_ticker: dict[str, pd.DataFrame]) ->
 
 
 # ---------------------------------------------------------------------------
-# Macro monthly features from FRED-MD
+# Macro features (same as build_equity_long.py, with configurable start)
 # ---------------------------------------------------------------------------
 def build_macro_monthly(fred_md_path: Path) -> pd.DataFrame:
-    """
-    Load FRED-MD transformed monthly data, restrict to 2015+ and the 35 macro vars.
-
-    Returns long-format DataFrame with Frequency="M".
-    """
+    """Load FRED-MD monthly data, filter to >=2003 and the 35 macro vars."""
     md = pd.read_csv(fred_md_path, parse_dates=["date"]).sort_values("date")
-    md = md[md["date"] >= "2015-01-01"].copy()
+    md = md[md["date"] >= START_DATE].copy()
     md = md.ffill()
 
-    # Select only the columns that exist in the file
     available = [v for v in MACRO_MONTHLY_VARS if v in md.columns]
     missing = set(MACRO_MONTHLY_VARS) - set(available)
     if missing:
@@ -214,21 +272,13 @@ def build_macro_monthly(fred_md_path: Path) -> pd.DataFrame:
     )
     long.rename(columns={"date": "Timestamp"}, inplace=True)
     long["Frequency"] = "M"
-    long = long.dropna(subset=["Value"])
-    return long
+    return long.dropna(subset=["Value"])
 
 
-# ---------------------------------------------------------------------------
-# Macro quarterly features from FRED-QD
-# ---------------------------------------------------------------------------
 def build_macro_quarterly(fred_qd_path: Path) -> pd.DataFrame:
-    """
-    Load FRED-QD transformed quarterly data, restrict to 2015+ and the 13 macro vars.
-
-    Returns long-format DataFrame with Frequency="Q".
-    """
+    """Load FRED-QD quarterly data, filter to >=2003 and the 13 macro vars."""
     qd = pd.read_csv(fred_qd_path, parse_dates=["date"]).sort_values("date")
-    qd = qd[qd["date"] >= "2015-01-01"].copy()
+    qd = qd[qd["date"] >= START_DATE].copy()
     qd = qd.ffill()
 
     available = [v for v in MACRO_QUARTERLY_VARS if v in qd.columns]
@@ -247,19 +297,14 @@ def build_macro_quarterly(fred_qd_path: Path) -> pd.DataFrame:
     )
     long.rename(columns={"date": "Timestamp"}, inplace=True)
     long["Frequency"] = "Q"
-    long = long.dropna(subset=["Value"])
-    return long
+    return long.dropna(subset=["Value"])
 
 
 # ---------------------------------------------------------------------------
-# Quarterly EPS target
+# Quarterly EPS target (same logic as build_equity_long.py)
 # ---------------------------------------------------------------------------
 def build_quarterly_target(compustat: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """
-    Compute YoY EPS growth for one stock from Compustat quarterly data.
-
-    Returns long-format DataFrame with Frequency="Q", timestamped at rdq.
-    """
+    """Compute YoY EPS growth for one stock from Compustat quarterly data."""
     df = compustat[compustat["tic"] == ticker].copy()
     if df.empty:
         print(f"  WARNING: no Compustat data for {ticker}")
@@ -269,22 +314,15 @@ def build_quarterly_target(compustat: pd.DataFrame, ticker: str) -> pd.DataFrame
     df["rdq"] = pd.to_datetime(df["rdq"])
     df = df.sort_values("datadate").drop_duplicates(subset=["datadate"], keep="first")
 
-    # YoY growth: compare to same fiscal quarter one year ago (4 quarters back)
     df = df.reset_index(drop=True)
     df["epspxq_lag4"] = df["epspxq"].shift(4)
 
-    # Compute growth with denominator floor
     denom = df["epspxq_lag4"].abs().clip(lower=0.01)
     df["eps_yoy"] = (df["epspxq"] - df["epspxq_lag4"]) / denom
-
-    # Winsorize at [-2, 2]
     df["eps_yoy"] = df["eps_yoy"].clip(lower=-2.0, upper=2.0)
 
-    # Drop rows without valid YoY (first 4 quarters) or missing rdq
     df = df.dropna(subset=["eps_yoy", "rdq"])
-
-    # Restrict to VOLARE time range (rdq >= 2015-01-01)
-    df = df[df["rdq"] >= "2015-01-01"]
+    df = df[df["rdq"] >= START_DATE]
 
     result = pd.DataFrame({
         "Timestamp": df["rdq"],
@@ -296,7 +334,7 @@ def build_quarterly_target(compustat: pd.DataFrame, ticker: str) -> pd.DataFrame
 
 
 # ---------------------------------------------------------------------------
-# Assembly
+# Assembly (same logic as build_equity_long.py)
 # ---------------------------------------------------------------------------
 def assemble_stock_long(
     ticker: str,
@@ -307,9 +345,7 @@ def assemble_stock_long(
     macro_quarterly_long: pd.DataFrame,
     quarterly_target_long: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Assemble all features for one stock into a single long-format DataFrame.
-    """
+    """Assemble all features for one stock into a single long-format DataFrame."""
     # Melt monthly stock features to long format
     stock_monthly_cols = [c for c in monthly_stock.columns if c != "Timestamp"]
     monthly_stock_long = monthly_stock.melt(
@@ -337,10 +373,8 @@ def assemble_stock_long(
     ]
     combined = pd.concat(all_blocks, ignore_index=True)
 
-    # Ensure Timestamp is datetime
     combined["Timestamp"] = pd.to_datetime(combined["Timestamp"])
 
-    # Sort: Timestamp, then frequency order (D < M < Q), then variable name
     freq_order = {"D": 0, "M": 1, "Q": 2}
     combined["_freq_sort"] = combined["Frequency"].map(freq_order)
     combined = (
@@ -350,9 +384,7 @@ def assemble_stock_long(
         .reset_index(drop=True)
     )
 
-    # Drop any NaN values
     combined = combined.dropna(subset=["Value"])
-
     return combined[["Timestamp", "Variable", "Value", "Frequency"]]
 
 
@@ -360,30 +392,45 @@ def assemble_stock_long(
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser(description="Build extended equity long-format CSVs")
+    parser.add_argument("--universe", default=str(DEFAULT_UNIVERSE))
+    parser.add_argument("--crsp", default=str(DEFAULT_CRSP))
+    parser.add_argument("--iid", "--rv", default=str(DEFAULT_IID),
+                        help="Path to RV parquet (from IID or TAQ)")
+    parser.add_argument("--compustat", default=str(DEFAULT_COMPUSTAT))
+    args = parser.parse_args()
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load raw data
-    print("Loading VOLARE data...")
-    volare = pd.read_csv(VOLARE_PATH, parse_dates=["date"])
-    tickers = sorted(volare["symbol"].unique().tolist())
-    print(f"  {len(tickers)} tickers, {len(volare)} rows, "
-          f"{volare['date'].min().date()} to {volare['date'].max().date()}")
+    # Load universe
+    universe = pd.read_csv(args.universe)
+    print(f"Universe: {len(universe)} stocks")
+
+    # Load raw data with polars (fast)
+    print("\nLoading CRSP daily data...")
+    crsp = pl.read_parquet(args.crsp)
+    print(f"  {len(crsp):,} rows, {crsp['permno'].n_unique()} stocks")
+
+    print("Loading IID realized variance data...")
+    iid = pl.read_parquet(args.iid)
+    print(f"  {len(iid):,} rows, {iid['permno'].n_unique()} stocks")
 
     print("Loading Compustat data...")
-    compustat = pd.read_csv(COMPUSTAT_PATH)
-    print(f"  {compustat['tic'].nunique()} tickers, {len(compustat)} rows")
+    compustat = pd.read_csv(args.compustat)
+    print(f"  {len(compustat)} rows, {compustat['tic'].nunique()} tickers")
 
     print("Loading FRED-MD macro data (monthly)...")
     macro_monthly_long = build_macro_monthly(FRED_MD_PATH)
-    print(f"  {macro_monthly_long['Variable'].nunique()} monthly macro vars, {len(macro_monthly_long)} rows")
+    print(f"  {macro_monthly_long['Variable'].nunique()} monthly macro vars")
 
     print("Loading FRED-QD macro data (quarterly)...")
     macro_quarterly_long = build_macro_quarterly(FRED_QD_PATH)
-    print(f"  {macro_quarterly_long['Variable'].nunique()} quarterly macro vars, {len(macro_quarterly_long)} rows")
+    print(f"  {macro_quarterly_long['Variable'].nunique()} quarterly macro vars")
 
-    # Compute all monthly stock features (needed for cross-sectional aggregates)
+    # Compute all monthly stock features
     print("\nComputing monthly stock features for all tickers...")
-    monthly_by_ticker = compute_all_monthly_stock_features(volare, tickers)
+    monthly_by_ticker = compute_all_monthly_stock_features(crsp, iid, universe)
+    print(f"  {len(monthly_by_ticker)} tickers with monthly data")
 
     print("Computing cross-sectional monthly aggregates...")
     cross_sectional = build_cross_sectional_monthly(monthly_by_ticker)
@@ -391,13 +438,17 @@ def main():
 
     # Build per-stock long-format files
     print(f"\nBuilding per-stock long-format CSVs in {OUTPUT_DIR}/")
-    for ticker in tickers:
-        stock_volare = volare[volare["symbol"] == ticker].copy()
+    for _, row in tqdm(universe.iterrows(), total=len(universe),
+                       desc="Building CSVs", unit="stock"):
+        permno = row["permno"]
+        ticker = row["ticker"]
 
-        # Daily
-        daily_long = build_daily_features(stock_volare, ticker)
+        # Daily features
+        crsp_stock = crsp.filter(pl.col("permno") == permno)
+        iid_stock = iid.filter(pl.col("permno") == permno)
+        daily_long = build_daily_features(crsp_stock, iid_stock, ticker)
 
-        # Monthly (stock-level)
+        # Monthly stock features
         if ticker not in monthly_by_ticker:
             print(f"  SKIP {ticker}: no monthly data")
             continue
@@ -422,8 +473,10 @@ def main():
         combined.to_csv(out_path, index=False)
 
         n_targets = len(quarterly_target_long)
-        print(f"  {ticker}: {len(combined):>6,} rows  ({n_daily}D, {n_monthly}M, {n_quarterly}Q)  "
-              f"{n_targets} quarterly targets  -> {out_path.name}")
+        tqdm.write(
+            f"  {ticker}: {len(combined):>7,} rows  ({n_daily}D, {n_monthly}M, {n_quarterly}Q)  "
+            f"{n_targets} quarterly targets  -> {out_path.name}"
+        )
 
     print("\nDone.")
 

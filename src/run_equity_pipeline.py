@@ -65,9 +65,10 @@ def set_seeds(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    if torch.cuda.is_available():
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
 
 
 def _resolve_midas_monthly_vars(config, ticker: str) -> list[str]:

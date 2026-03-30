@@ -32,7 +32,12 @@ from src.utils.data_paths import (
     use_quarterly_only_predictors,
 )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 
 
@@ -733,9 +738,10 @@ if __name__ == '__main__':
     random.seed(config.training.seed)
     np.random.seed(config.training.seed)
     torch.manual_seed(config.training.seed)
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    if device.type == "cuda":
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
 
     if is_equity_mode(config):
         csv_path, suffix, target_var = resolve_equity_data_paths(config, project_root)

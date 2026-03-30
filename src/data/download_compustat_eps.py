@@ -1,9 +1,7 @@
 """
 Download quarterly EPS data from WRDS Compustat.
 
-Supports two modes:
-  - Universe mode (--universe): reads permno/gvkey/ticker from universe CSV
-  - VOLARE mode (default): reads tickers from VOLARE file (legacy behavior)
+Reads permno/gvkey/ticker from a universe CSV (e.g. universe_500.csv).
 
 Outputs:
     data/raw/equity/gvkey_ticker_map.csv   – gvkey ↔ ticker crosswalk
@@ -48,33 +46,22 @@ def get_wrds_url() -> str:
         "Format: wrds-pgdata.wharton.upenn.edu:9737:wrds:USERNAME:PASSWORD"
     )
 
-VOLARE_PATH = project_root / "data" / "raw" / "volare" / "realized_variance_stocks.csv"
 OUTPUT_DIR = project_root / "data" / "raw" / "equity"
 
 
 def get_ticker_universe(
-    universe_path: Path = None, volare_path: Path = None
+    universe_path: Path,
 ) -> tuple[list[str], list[str]]:
-    """Return (tickers, gvkeys) from universe CSV or VOLARE fallback.
-
-    In universe mode, gvkeys come from the universe CSV directly.
-    In VOLARE mode, gvkeys are empty (will be looked up via comp.security).
-    """
+    """Return (tickers, gvkeys) from universe CSV."""
     if universe_path and universe_path.exists():
         df = pd.read_csv(universe_path)
         tickers = sorted(df["ticker"].unique().tolist())
         gvkeys = sorted(df["gvkey"].unique().tolist())
-        print(f"Universe mode: {len(tickers)} tickers, {len(gvkeys)} gvkeys")
+        print(f"Universe: {len(tickers)} tickers, {len(gvkeys)} gvkeys")
         return tickers, gvkeys
 
-    if volare_path and volare_path.exists():
-        df = pd.read_csv(volare_path, usecols=["symbol"])
-        tickers = sorted(df["symbol"].unique().tolist())
-        print(f"VOLARE mode: {len(tickers)} tickers")
-        return tickers, []
-
     raise FileNotFoundError(
-        "No universe or VOLARE file found. Provide --universe or check VOLARE_PATH."
+        f"Universe file not found: {universe_path}. Provide --universe."
     )
 
 
@@ -177,26 +164,24 @@ def print_summary(fundq: pd.DataFrame) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Download Compustat quarterly EPS")
     parser.add_argument(
-        "--universe", default=None,
-        help="Path to universe CSV (universe mode). If omitted, uses VOLARE tickers.",
+        "--universe", default="data/raw/equity/universe_500.csv",
+        help="Path to universe CSV with permno/ticker/gvkey columns.",
     )
     parser.add_argument(
-        "--start-date", default=None,
-        help="Earliest datadate (default: 2001-01-01 for universe, 2014-01-01 for VOLARE)",
+        "--start-date", default="2001-01-01",
+        help="Earliest datadate (default: 2001-01-01)",
     )
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Get ticker universe
-    universe_path = Path(args.universe) if args.universe else None
-    if universe_path and not universe_path.is_absolute():
+    universe_path = Path(args.universe)
+    if not universe_path.is_absolute():
         universe_path = project_root / universe_path
-    tickers, gvkeys = get_ticker_universe(universe_path, VOLARE_PATH)
+    tickers, gvkeys = get_ticker_universe(universe_path)
 
     start_date = args.start_date
-    if start_date is None:
-        start_date = "2001-01-01" if gvkeys else "2014-01-01"
 
     # 2. Connect to WRDS via SQLAlchemy
     print("\nConnecting to WRDS...")

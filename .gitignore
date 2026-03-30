@@ -56,6 +56,5 @@ pip-log.txt
 .Rhistory
 
 # Large or proprietary raw data files
-/data/raw/volare/
 /data/raw/equity/
 Rplots.pdf
