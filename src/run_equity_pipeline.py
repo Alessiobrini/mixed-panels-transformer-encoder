@@ -39,10 +39,12 @@ from src.models.ar import run_ar_baseline, run_concatenated_ar_baseline
 from src.models.single_freq_models import (
     run_single_freq_baselines,
     run_concatenated_single_freq_baselines,
+    run_concatenated_umidas_baseline,
 )
 from src.train import (
     run_standard_training,
     run_concatenated_training,
+    run_concatenated_optuna,
     run_optuna,
 )
 from src.evaluation.evaluate_forecasts import (
@@ -394,7 +396,10 @@ def run_concatenated(config, today: str, cfg_path: Path):
     # --- 1. MPTE Transformer ---
     print("\n--- MPTE Transformer (concatenated) ---")
     try:
-        run_concatenated_training(config, project_root, exp_path, suffix)
+        if config.training.optimize:
+            run_concatenated_optuna(config, project_root, exp_path, suffix)
+        else:
+            run_concatenated_training(config, project_root, exp_path, suffix)
     except Exception as e:
         print(f"  ERROR in concatenated transformer training: {e}")
 
@@ -412,8 +417,20 @@ def run_concatenated(config, today: str, cfg_path: Path):
     except Exception as e:
         print(f"  ERROR in concatenated AR: {e}")
 
-    # --- 3. MIDAS --- skip in concatenated mode
-    print("\n--- MIDAS: SKIPPED (not supported in concatenated mode) ---")
+    # --- 3. U-MIDAS (pooled) ---
+    print("\n--- U-MIDAS Baseline (concatenated) ---")
+    try:
+        midas_lags = list(config.model.midas.lags)
+        run_concatenated_umidas_baseline(
+            ticker_csv,
+            config.equity.target_template,
+            config.data.train_ratio,
+            exp_path,
+            suffix,
+            lags=midas_lags,
+        )
+    except Exception as e:
+        print(f"  ERROR in concatenated U-MIDAS: {e}")
 
     # --- 4. Single-freq baselines (OLS, XGB, NN) ---
     print("\n--- Single-freq baselines (concatenated OLS, XGB, NN) ---")

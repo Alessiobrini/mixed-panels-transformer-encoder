@@ -456,6 +456,154 @@ def run_concatenated_single_freq_baselines(
 
 
 # ---------------------------------------------------------------------------
+# Pooled U-MIDAS baseline
+# ---------------------------------------------------------------------------
+def run_concatenated_umidas_baseline(
+    ticker_csv_paths: dict,
+    target_template: str,
+    train_ratio: float,
+    exp_path,
+    suffix: str,
+    lags: list = None,
+    seed: int = SEED,
+):
+    """Pooled U-MIDAS: OLS with individual monthly lag features across all stocks.
+
+    For each quarterly target observation, builds features from monthly
+    variables at lag 1, 2, 3 months before the target date, plus quarterly
+    macro variables. Pools all stock-quarters and fits a single OLS model.
+    """
+    if lags is None:
+        lags = [1, 2, 3]
+    np.random.seed(seed)
+    exp_path = Path(exp_path)
+    generic_target = target_template.replace("{TKR}_", "")
+
+    train_blocks, test_blocks = [], []
+    ticker_test_meta = []
+
+    for tkr, csv_path in ticker_csv_paths.items():
+        csv_path = Path(csv_path)
+        if not csv_path.exists():
+            continue
+        target_var = target_template.replace("{TKR}", tkr)
+        try:
+            df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+        except Exception:
+            continue
+
+        # Quarterly target
+        q_target = df[(df["Variable"] == target_var) & (df["Frequency"] == "Q")].copy()
+        q_target = q_target.sort_values("Timestamp").reset_index(drop=True)
+        if len(q_target) < 4:
+            continue
+
+        # Quarterly macro predictors (wide)
+        q_macro = df[(df["Frequency"] == "Q") & (df["Variable"] != target_var)].copy()
+        if not q_macro.empty:
+            q_wide = q_macro.pivot_table(
+                index="Timestamp", columns="Variable", values="Value"
+            ).sort_index().ffill()
+        else:
+            q_wide = pd.DataFrame(index=pd.DatetimeIndex([]))
+
+        # Monthly predictors (wide)
+        m_df = df[df["Frequency"] == "M"].copy()
+        if not m_df.empty:
+            m_df["Timestamp"] = m_df["Timestamp"].dt.to_period("M").dt.to_timestamp()
+            m_wide = m_df.pivot_table(
+                index="Timestamp", columns="Variable", values="Value"
+            ).sort_index().ffill()
+            # Strip ticker prefix from monthly var names
+            prefix = f"{tkr}_"
+            m_wide = m_wide.rename(
+                columns=lambda c: c[len(prefix):] if c.startswith(prefix) else c
+            )
+        else:
+            m_wide = pd.DataFrame(index=pd.DatetimeIndex([]))
+
+        # Build feature rows for each quarterly observation
+        rows = []
+        for _, qrow in q_target.iterrows():
+            q_date = pd.Timestamp(qrow["Timestamp"])
+            obs = {"target": qrow["Value"], "date": q_date}
+
+            # Monthly lag features
+            for lag in lags:
+                lag_date = q_date - pd.DateOffset(months=lag)
+                valid = m_wide.index[m_wide.index <= lag_date]
+                nearest = valid[-1] if len(valid) > 0 else (m_wide.index[0] if len(m_wide) > 0 else None)
+                if nearest is not None and nearest in m_wide.index:
+                    for col in m_wide.columns:
+                        val = m_wide.loc[nearest, col]
+                        obs[f"{col}_lag{lag}"] = val if pd.notna(val) else 0.0
+                else:
+                    for col in m_wide.columns:
+                        obs[f"{col}_lag{lag}"] = 0.0
+
+            # Quarterly macro features (most recent available, no look-ahead)
+            valid_q = q_wide.index[q_wide.index <= q_date]
+            if len(valid_q) > 0:
+                nearest_q = valid_q[-1]
+                for col in q_wide.columns:
+                    val = q_wide.loc[nearest_q, col]
+                    obs[col] = val if pd.notna(val) else 0.0
+            else:
+                for col in q_wide.columns:
+                    obs[col] = 0.0
+
+            rows.append(obs)
+
+        stock_df = pd.DataFrame(rows)
+        n_train = int(len(stock_df) * train_ratio)
+        train_blocks.append(stock_df.iloc[:n_train])
+        test_blocks.append(stock_df.iloc[n_train:])
+        ticker_test_meta.append({"ticker": tkr, "n_test": len(stock_df) - n_train})
+
+    if not train_blocks:
+        print("  No stocks with sufficient data for U-MIDAS")
+        return
+
+    pooled_train = pd.concat(train_blocks, ignore_index=True)
+    pooled_test = pd.concat(test_blocks, ignore_index=True)
+
+    feature_cols = [c for c in pooled_train.columns if c not in ("target", "date")]
+    X_train = pooled_train[feature_cols].values
+    y_train = pooled_train["target"].values
+    X_test = pooled_test[feature_cols].values
+
+    # Scale features
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s = scaler.transform(X_test)
+
+    # Fit OLS (U-MIDAS)
+    model = LinearRegression()
+    model.fit(X_train_s, y_train)
+    all_preds = model.predict(X_test_s)
+
+    # Save per-ticker predictions
+    offset = 0
+    for meta in ticker_test_meta:
+        tkr = meta["ticker"]
+        n = meta["n_test"]
+        block = pooled_test.iloc[offset:offset + n]
+        ticker_preds = all_preds[offset:offset + n]
+        ticker_exp = exp_path / tkr
+        ticker_exp.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({
+            "date": block["date"].values,
+            "target": block["target"].values,
+            "predicted": ticker_preds,
+        }).to_csv(ticker_exp / f"midas_preds_{suffix}.csv", index=False)
+        offset += n
+
+    print(f"  U-MIDAS: {len(feature_cols)} features, "
+          f"{len(pooled_train)} train / {len(pooled_test)} test obs, "
+          f"{len(ticker_test_meta)} stocks")
+
+
+# ---------------------------------------------------------------------------
 # Original __main__ for FRED experiments (unchanged behavior)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":

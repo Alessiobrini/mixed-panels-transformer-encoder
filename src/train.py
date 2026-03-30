@@ -550,6 +550,214 @@ def run_concatenated_training(config, project_root, exp_path, suffix):
     print(f"[Concat] Per-ticker predictions saved under {exp_path}")
 
 
+def _prepare_from_cache_with_val(cache, config):
+    """Build DataLoaders with a validation split carved from training data."""
+    samples = cache["samples"]
+    per_ticker_info = cache["per_ticker_info"]
+    var_map = cache["var_map"]
+    freq_map = cache["freq_map"]
+
+    dataset = _CachedDataset(samples, var_map, freq_map)
+    val_ratio = getattr(config.data, "val_ratio", 0.1)
+
+    all_train, all_val, all_test = [], [], []
+    for info in per_ticker_info:
+        gt = info["global_train"]
+        n_val = max(1, int(len(gt) * val_ratio))
+        all_train.extend(gt[:-n_val])
+        all_val.extend(gt[-n_val:])
+        all_test.extend(info["global_test"])
+
+    batch_size = config.training.batch_size
+    train_loader = make_dataloader(dataset, all_train, batch_size, collate_batch)
+    val_loader = make_dataloader(dataset, all_val, batch_size, collate_batch)
+    test_loader = make_dataloader(dataset, all_test, batch_size, collate_batch)
+
+    return dataset, per_ticker_info, train_loader, val_loader, test_loader
+
+
+def objective_concatenated(trial, config, project_root, exp_path, suffix,
+                           dataset, per_ticker_info, train_loader, val_loader):
+    """Optuna objective for concatenated training."""
+    transformer_cfg = getattr(config.model, "transformer", None)
+    use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
+    use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
+
+    # Sample hyperparameters
+    if hasattr(config.hyperopt, 'd_model'):
+        d_model = trial.suggest_categorical('d_model', [int(x) for x in config.hyperopt.d_model])
+    else:
+        d_model = config.model.transformer.d_model
+
+    if hasattr(config.hyperopt, 'nhead'):
+        valid_heads = [h for h in config.hyperopt.nhead if d_model % h == 0]
+        if not valid_heads:
+            raise optuna.TrialPruned(f"No valid nhead for d_model={d_model}")
+        nhead = trial.suggest_categorical('nhead', valid_heads)
+    else:
+        nhead = config.model.transformer.nhead
+
+    params = {
+        'd_model': d_model,
+        'nhead': nhead,
+        'num_layers': (
+            trial.suggest_categorical('num_layers', [int(x) for x in config.hyperopt.num_layers])
+            if hasattr(config.hyperopt, 'num_layers') else config.model.transformer.num_layers
+        ),
+        'dropout': (
+            trial.suggest_categorical('dropout', [float(x) for x in config.hyperopt.dropout])
+            if hasattr(config.hyperopt, 'dropout') else config.model.transformer.dropout
+        ),
+        'lr': (
+            trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
+            if hasattr(config.hyperopt, 'lr') else config.training.lr
+        ),
+        'dim_feedforward': (
+            trial.suggest_categorical('dim_feedforward', [int(x) for x in config.hyperopt.dim_feedforward])
+            if hasattr(config.hyperopt, 'dim_feedforward') else config.model.transformer.dim_feedforward
+        ),
+        'activation': (
+            trial.suggest_categorical('activation', config.hyperopt.activation)
+            if hasattr(config.hyperopt, 'activation') else config.model.transformer.activation
+        ),
+    }
+    print(f"[Trial {trial.number}] {params}")
+
+    model = build_model(
+        dataset, config,
+        params['d_model'], params['nhead'],
+        params['num_layers'], params['dropout'],
+        train_loader=train_loader,
+        dim_feedforward=params['dim_feedforward'],
+        activation=params['activation'],
+        use_nonlinearity=use_nonlinearity,
+        use_attention=use_attention,
+    )
+    model.to(device)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
+
+    best_val = float('inf')
+    patience = getattr(config.training, 'patience', 5)
+    wait = 0
+    model_path = exp_path / f'model_trial_{trial.number}.pt'
+
+    for epoch in range(1, config.training.epochs + 1):
+        model.train()
+        for batch in train_loader:
+            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+            out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'])
+            loss = criterion(out, batch['target'])
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        total_val = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+                out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'])
+                total_val += criterion(out, batch['target']).item()
+        avg_val = total_val / len(val_loader)
+
+        trial.report(avg_val, epoch)
+        if trial.should_prune():
+            raise optuna.TrialPruned()
+
+        if avg_val < best_val:
+            best_val = avg_val
+            wait = 0
+            torch.save(model.state_dict(), model_path)
+        else:
+            wait += 1
+            if wait >= patience:
+                break
+
+    trial.set_user_attr("best_model_path", str(model_path))
+    return best_val
+
+
+def run_concatenated_optuna(config, project_root, exp_path, suffix):
+    """Optuna hyperparameter optimization for concatenated MPTE."""
+    cache_path = _resolve_cache_path(config, project_root)
+    if cache_path.exists():
+        print(f"[Concat Optuna] Loading cache from {cache_path.name}...")
+        cache = torch.load(cache_path, map_location="cpu", weights_only=False)
+    else:
+        print("[Concat Optuna] No cache — building from CSVs...")
+        from src.data.build_concat_cache import build_concat_cache
+        cache = build_concat_cache(config, project_root)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(cache, cache_path)
+
+    dataset, per_ticker_info, train_loader, val_loader, test_loader = \
+        _prepare_from_cache_with_val(cache, config)
+
+    n_train = len(train_loader.dataset)
+    n_val = len(val_loader.dataset)
+    n_test = len(test_loader.dataset)
+    print(f"[Concat Optuna] {len(per_ticker_info)} stocks, "
+          f"{n_train} train / {n_val} val / {n_test} test")
+
+    algo = partial(
+        objective_concatenated,
+        config=config, project_root=project_root,
+        exp_path=exp_path, suffix=suffix,
+        dataset=dataset, per_ticker_info=per_ticker_info,
+        train_loader=train_loader, val_loader=val_loader,
+    )
+    sampler = optuna.samplers.TPESampler(seed=config.training.seed)
+    n_trials = getattr(config.hyperopt, 'n_trials', 15)
+    study = optuna.create_study(direction='minimize', sampler=sampler)
+    study.optimize(algo, n_trials=n_trials)
+
+    best_params = study.best_trial.params
+    with open(exp_path / 'best_params.yaml', 'w') as f:
+        yaml.dump(best_params, f)
+    print(f"Best val loss: {study.best_value:.6f}\nBest params: {best_params}")
+
+    # Save trials
+    trials_df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
+    trials_df.to_csv(exp_path / "optuna_trials.csv", index=False)
+
+    # Final evaluation with best model
+    transformer_cfg = getattr(config.model, "transformer", None)
+    use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
+    use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
+
+    model = build_model(
+        dataset, config,
+        best_params.get('d_model', config.model.transformer.d_model),
+        best_params.get('nhead', config.model.transformer.nhead),
+        best_params.get('num_layers', config.model.transformer.num_layers),
+        best_params.get('dropout', config.model.transformer.dropout),
+        train_loader=train_loader,
+        dim_feedforward=best_params.get('dim_feedforward', config.model.transformer.dim_feedforward),
+        activation=best_params.get('activation', config.model.transformer.activation),
+        use_nonlinearity=use_nonlinearity,
+        use_attention=use_attention,
+    )
+    best_model_path = Path(study.best_trial.user_attrs["best_model_path"])
+    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.to(device)
+
+    # Save as canonical best_model.pt
+    torch.save(model.state_dict(), exp_path / 'best_model.pt')
+
+    for info in per_ticker_info:
+        tkr = info["ticker"]
+        ticker_exp = exp_path / tkr
+        evaluate_and_save_ticker(model, dataset, info, ticker_exp, suffix, device)
+    print(f"[Concat Optuna] Per-ticker predictions saved under {exp_path}")
+
+    # Clean up trial model files
+    for t in study.trials:
+        p = Path(t.user_attrs.get("best_model_path", ""))
+        if p.exists() and p != exp_path / 'best_model.pt':
+            p.unlink(missing_ok=True)
+
+
 # ------------------------
 # Training Modes
 # ------------------------
