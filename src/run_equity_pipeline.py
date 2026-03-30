@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import pickle
 import platform
 import random
 import shutil
@@ -50,10 +51,12 @@ from src.evaluation.evaluate_forecasts import (
     run_dm_tests,
 )
 
-if platform.system() == "Windows":
-    RSCRIPT = r"C:\Program Files\R\R-4.5.1\bin\Rscript.exe"
-else:
-    RSCRIPT = "/hpc/group/darec/ab978/miniconda3/envs/tsa-dev/bin/Rscript"
+RSCRIPT = shutil.which("Rscript")
+if RSCRIPT is None:
+    if platform.system() == "Windows":
+        RSCRIPT = r"C:\Program Files\R\R-4.5.1\bin\Rscript.exe"
+    else:
+        RSCRIPT = "/hpc/group/darec/ab978/miniconda3/envs/tsa-dev/bin/Rscript"
 
 MIDAS_SCRIPT = project_root / "src" / "models" / "midas.R"
 
@@ -87,14 +90,24 @@ def _write_midas_data_and_config(
     boundaries (via ``as.yearqtr``). EPS report dates are asynchronous,
     so we floor them to the quarter-start before writing.
     """
-    midas_vars = _resolve_midas_monthly_vars(config, ticker)
+    # Read the full long-format CSV and use as many monthly variables as feasible
+    full = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+    all_monthly = sorted(
+        full.loc[full["Frequency"] == "M", "Variable"].unique().tolist()
+    )
     quarterly_vars = list(config.features.quarterly_vars) + [target_var]
     seen = set()
     quarterly_vars = [v for v in quarterly_vars if not (v in seen or seen.add(v))]
+
+    # Cap monthly vars so that (n_vars * max_lag + 1) < n_train_obs
+    n_target = len(full[full["Variable"] == target_var])
+    n_train = int(n_target * config.data.train_ratio)
+    max_lag = max(config.model.midas.lags)
+    max_vars = (n_train - 2) // max_lag  # leave margin for intercept + safety
+    midas_vars = all_monthly[:max_vars] if len(all_monthly) > max_vars else all_monthly
+
     all_vars = set(midas_vars) | set(quarterly_vars)
 
-    # Read the full long-format CSV and filter to MIDAS-relevant vars
-    full = pd.read_csv(csv_path, parse_dates=["Timestamp"])
     midas_df = full[full["Variable"].isin(all_vars)].copy()
 
     # Align timestamps to regular calendar boundaries so R's ts() works:
@@ -113,6 +126,11 @@ def _write_midas_data_and_config(
         .dt.to_timestamp()
     )
 
+    # Drop duplicates that arise from flooring different raw dates
+    # to the same calendar boundary (keep last observation)
+    midas_df = midas_df.drop_duplicates(
+        subset=["Timestamp", "Variable"], keep="last"
+    )
 
     # Write temp CSV
     tmp_csv = Path(tempfile.mktemp(suffix=".csv", prefix=f"midas_data_{ticker}_"))
@@ -151,7 +169,10 @@ def _write_midas_data_and_config(
 
 
 def _build_quarterly_wide(csv_path: Path, target_var: str) -> pd.DataFrame:
-    """Pivot long-format CSV quarterly rows into wide format for single-freq baselines.
+    """Pivot long-format CSV into wide format for single-freq baselines.
+
+    Includes both quarterly variables and monthly variables collapsed to
+    quarterly frequency (mean of 3 months per calendar quarter).
 
     EPS report dates and FRED macro quarterly dates don't align, so we
     forward-fill the pivot table and keep only rows where the target is
@@ -159,13 +180,49 @@ def _build_quarterly_wide(csv_path: Path, target_var: str) -> pd.DataFrame:
     each EPS report date (no look-ahead bias).
     """
     df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+
+    # --- Quarterly data ---
     q = df[df["Frequency"] == "Q"].copy()
-    wide = q.pivot_table(index="Timestamp", columns="Variable", values="Value")
+    wide_q = q.pivot_table(index="Timestamp", columns="Variable", values="Value")
+    wide_q = wide_q.sort_index()
+    target_dates = wide_q.dropna(subset=[target_var]).index
+
+    # --- Monthly data collapsed to quarterly (mean of 3 months) ---
+    m = df[df["Frequency"] == "M"].copy()
+    if not m.empty:
+        m["Timestamp"] = m["Timestamp"].dt.to_period("M").dt.to_timestamp()
+        wide_m = m.pivot_table(index="Timestamp", columns="Variable", values="Value")
+        wide_m = wide_m.sort_index()
+        wide_m_q = wide_m.resample("QS").mean()
+        # Merge on union of dates so forward-fill propagates monthly-collapsed
+        # values to the asynchronous EPS report dates
+        wide = wide_q.join(wide_m_q, how="outer")
+    else:
+        wide = wide_q
+
     wide = wide.sort_index().ffill()
-    # Keep only rows where the target variable is non-null
-    wide = wide.dropna(subset=[target_var])
+    # Keep only dates where the target was originally observed
+    wide = wide.loc[wide.index.isin(target_dates)]
     wide.index.name = "date"
     return wide
+
+
+def _load_or_build_baseline_cache(config, suffix: str) -> dict:
+    """Load baseline wide-data cache from disk, or build and save it."""
+    cache_path = project_root / "data" / "processed" / f"baseline_wide_cache_{suffix}.pkl"
+    if cache_path.exists():
+        print(f"  Loading baseline cache from {cache_path.name}...")
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+
+    print("  No baseline cache found — building from CSVs...")
+    from src.data.build_concat_cache import build_baseline_cache
+    cache = build_baseline_cache(config, project_root)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "wb") as f:
+        pickle.dump(cache, f)
+    print(f"  Saved baseline cache to {cache_path.name}")
+    return cache
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +423,8 @@ def run_concatenated(config, today: str, cfg_path: Path):
         sf_optimize = getattr(sf_cfg, "optimize", True) if sf_cfg else True
         sf_val = getattr(sf_cfg, "val_ratio", 0.1) if sf_cfg else 0.1
 
+        baseline_cache = _load_or_build_baseline_cache(config, suffix)
+
         run_concatenated_single_freq_baselines(
             ticker_csv,
             config.equity.target_template,
@@ -375,6 +434,7 @@ def run_concatenated(config, today: str, cfg_path: Path):
             n_lags=n_lags,
             optimize=sf_optimize,
             val_ratio=sf_val,
+            baseline_cache=baseline_cache,
         )
     except Exception as e:
         print(f"  ERROR in concatenated single-freq baselines: {e}")

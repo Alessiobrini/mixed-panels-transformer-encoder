@@ -211,12 +211,26 @@ def run_single_freq_baselines(
 # Concatenated (cross-sectional) baselines
 # ---------------------------------------------------------------------------
 def _build_quarterly_wide(csv_path, target_var):
-    """Pivot long-format CSV quarterly rows into wide format."""
+    """Pivot long-format CSV into wide format (quarterly + monthly collapsed to quarterly)."""
     df = pd.read_csv(csv_path, parse_dates=["Timestamp"])
+
     q = df[df["Frequency"] == "Q"].copy()
-    wide = q.pivot_table(index="Timestamp", columns="Variable", values="Value")
+    wide_q = q.pivot_table(index="Timestamp", columns="Variable", values="Value")
+    wide_q = wide_q.sort_index()
+    target_dates = wide_q.dropna(subset=[target_var]).index
+
+    m = df[df["Frequency"] == "M"].copy()
+    if not m.empty:
+        m["Timestamp"] = m["Timestamp"].dt.to_period("M").dt.to_timestamp()
+        wide_m = m.pivot_table(index="Timestamp", columns="Variable", values="Value")
+        wide_m = wide_m.sort_index()
+        wide_m_q = wide_m.resample("QS").mean()
+        wide = wide_q.join(wide_m_q, how="outer")
+    else:
+        wide = wide_q
+
     wide = wide.sort_index().ffill()
-    wide = wide.dropna(subset=[target_var])
+    wide = wide.loc[wide.index.isin(target_dates)]
     wide.index.name = "date"
     return wide
 
@@ -231,6 +245,7 @@ def run_concatenated_single_freq_baselines(
     optimize: bool = True,
     val_ratio: float = 0.1,
     seed: int = SEED,
+    baseline_cache: dict = None,
 ):
     """Pooled OLS / XGBoost / NN across all stocks.
 
@@ -254,7 +269,10 @@ def run_concatenated_single_freq_baselines(
     for tkr, csv_path in ticker_csv_paths.items():
         target_var = target_template.replace("{TKR}", tkr)
         try:
-            wide = _build_quarterly_wide(csv_path, target_var)
+            if baseline_cache and tkr in baseline_cache:
+                wide = baseline_cache[tkr]
+            else:
+                wide = _build_quarterly_wide(csv_path, target_var)
         except Exception:
             continue
         # Strip ticker prefix from column names

@@ -111,17 +111,53 @@ def build_concat_cache(config, project_root):
     return cache
 
 
+def build_baseline_cache(config, project_root):
+    """Build wide quarterly DataFrames for all tickers (used by OLS/XGB/NN).
+
+    Returns ``{ticker: wide_df}`` where each DataFrame has ~57 columns
+    (14 quarterly + 43 monthly collapsed to quarterly).
+    """
+    from src.run_equity_pipeline import _build_quarterly_wide
+
+    ticker_csv = resolve_all_equity_csv_paths(config, project_root)
+    ticker_csv = {t: p for t, p in ticker_csv.items() if p.exists()}
+    target_template = config.equity.target_template
+
+    cache = {}
+    for tkr, csv_path in tqdm(ticker_csv.items(), desc="Building baseline cache"):
+        target_var = target_template.replace("{TKR}", tkr)
+        try:
+            wide = _build_quarterly_wide(csv_path, target_var)
+            if len(wide) >= 4:
+                cache[tkr] = wide
+        except Exception as e:
+            print(f"  SKIP {tkr}: {e}")
+
+    print(f"Baseline cache: {len(cache)} tickers")
+    return cache
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build concatenated dataset cache")
     parser.add_argument("--config", default="src/config/cfg_equity.yaml")
+    parser.add_argument("--baseline", action="store_true",
+                        help="Build baseline wide-data cache (for OLS/XGB/NN)")
     args = parser.parse_args()
 
     cfg_path = project_root / args.config
     config = Config(cfg_path)
+    suffix = getattr(config.equity, "suffix", "7D_43M_14Q")
+
+    if args.baseline:
+        cache = build_baseline_cache(config, project_root)
+        cache_path = project_root / "data" / "processed" / f"baseline_wide_cache_{suffix}.pkl"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        pickle.dump(cache, open(cache_path, "wb"))
+        print(f"Saved baseline cache to {cache_path} ({cache_path.stat().st_size / 1e6:.1f} MB)")
+        return
 
     cache = build_concat_cache(config, project_root)
 
-    suffix = getattr(config.equity, "suffix", "7D_43M_14Q")
     cache_path = project_root / "data" / "processed" / f"concat_cache_{suffix}.pt"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 

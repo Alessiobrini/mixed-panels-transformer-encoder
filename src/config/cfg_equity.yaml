@@ -117,7 +117,7 @@ model:
   ar:
     max_lag: 12
   midas:
-    lags: [1, 2, 3]
+    lags: [1]
     ar_lags: 1
     use_y_lags: false
 

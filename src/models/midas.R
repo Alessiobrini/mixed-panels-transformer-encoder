@@ -9,9 +9,10 @@ library(glue)
 
 
 # Set working directory to the project root
+# On macOS (Darwin), the Python caller sets cwd=project_root via subprocess
 if (Sys.info()[["sysname"]] == "Windows") {
   setwd("G:/Other computers/Dell Duke/Workfiles/Postdoc_file/peer_review_research/TimeSeriesAttention/mixed-frequency-attention")
-} else {
+} else if (Sys.info()[["sysname"]] != "Darwin") {
   setwd("/hpc/group/darec/ab978/tsa-dev")
 }
 
