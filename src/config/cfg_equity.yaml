@@ -138,13 +138,13 @@ evaluation:
   pred_col: predicted
 
 hyperopt:
-  n_trials: 15
+  n_trials: 30
   study_name: null
   d_model: [32, 64, 128]
-  nhead: [2, 4]
-  num_layers: [2, 4]
-  dropout: [0.1, 0.2]
-  lr: [1.0e-4, 5.0e-4, 1.0e-3]
+  nhead: [2, 4, 8]
+  num_layers: [2, 4, 6]
+  dropout: [0.05, 0.1, 0.2, 0.3]
+  lr: [5.0e-5, 1.0e-4, 5.0e-4, 1.0e-3]
   d_freq: [2, 4, 8]
   d_var: [4, 8, 16]
   dim_feedforward: [64, 128, 256]

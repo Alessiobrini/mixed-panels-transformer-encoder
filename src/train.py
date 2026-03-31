@@ -597,6 +597,11 @@ def objective_concatenated(trial, config, project_root, exp_path, suffix,
     else:
         nhead = config.model.transformer.nhead
 
+    tv = len(dataset.var_map)
+    tf = len(dataset.freq_map)
+    default_d_freq = getattr(transformer_cfg, "d_freq", None) if transformer_cfg else None
+    default_d_var = getattr(transformer_cfg, "d_var", None) if transformer_cfg else None
+
     params = {
         'd_model': d_model,
         'nhead': nhead,
@@ -611,6 +616,16 @@ def objective_concatenated(trial, config, project_root, exp_path, suffix,
         'lr': (
             trial.suggest_categorical('lr', [float(x) for x in config.hyperopt.lr])
             if hasattr(config.hyperopt, 'lr') else config.training.lr
+        ),
+        'd_freq': (
+            trial.suggest_categorical('d_freq', [int(x) for x in config.hyperopt.d_freq])
+            if hasattr(config.hyperopt, 'd_freq')
+            else (default_d_freq if default_d_freq is not None else emb_dim(tf))
+        ),
+        'd_var': (
+            trial.suggest_categorical('d_var', [int(x) for x in config.hyperopt.d_var])
+            if hasattr(config.hyperopt, 'd_var')
+            else (default_d_var if default_d_var is not None else emb_dim(tv))
         ),
         'dim_feedforward': (
             trial.suggest_categorical('dim_feedforward', [int(x) for x in config.hyperopt.dim_feedforward])
@@ -628,6 +643,8 @@ def objective_concatenated(trial, config, project_root, exp_path, suffix,
         params['d_model'], params['nhead'],
         params['num_layers'], params['dropout'],
         train_loader=train_loader,
+        d_freq=params['d_freq'],
+        d_var=params['d_var'],
         dim_feedforward=params['dim_feedforward'],
         activation=params['activation'],
         use_nonlinearity=use_nonlinearity,
@@ -726,6 +743,11 @@ def run_concatenated_optuna(config, project_root, exp_path, suffix):
     use_nonlinearity = True if transformer_cfg is None else getattr(transformer_cfg, "use_nonlinearity", True)
     use_attention = True if transformer_cfg is None else getattr(transformer_cfg, "use_attention", True)
 
+    tv = len(dataset.var_map)
+    tf = len(dataset.freq_map)
+    default_d_freq = getattr(transformer_cfg, "d_freq", None) if transformer_cfg else None
+    default_d_var = getattr(transformer_cfg, "d_var", None) if transformer_cfg else None
+
     model = build_model(
         dataset, config,
         best_params.get('d_model', config.model.transformer.d_model),
@@ -733,6 +755,8 @@ def run_concatenated_optuna(config, project_root, exp_path, suffix):
         best_params.get('num_layers', config.model.transformer.num_layers),
         best_params.get('dropout', config.model.transformer.dropout),
         train_loader=train_loader,
+        d_freq=best_params.get('d_freq', default_d_freq if default_d_freq is not None else emb_dim(tf)),
+        d_var=best_params.get('d_var', default_d_var if default_d_var is not None else emb_dim(tv)),
         dim_feedforward=best_params.get('dim_feedforward', config.model.transformer.dim_feedforward),
         activation=best_params.get('activation', config.model.transformer.activation),
         use_nonlinearity=use_nonlinearity,
