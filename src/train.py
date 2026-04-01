@@ -129,6 +129,7 @@ def build_model(
     activation="relu",
     use_nonlinearity=True,
     use_attention=True,
+    calendar_pe=False,
 ):
     if train_loader is None:
         train_loader = DataLoader(
@@ -156,6 +157,9 @@ def build_model(
     d_freq = emb_dim(tf, override=d_freq if d_freq is not None else default_d_freq)
     d_var  = emb_dim(tv, override=d_var if d_var is not None else default_d_var)
 
+    if not calendar_pe and transformer_cfg is not None:
+        calendar_pe = getattr(transformer_cfg, "calendar_pe", False)
+
 
     return MixedFrequencyTransformer(
         freq_vocab_size=tf,
@@ -172,6 +176,7 @@ def build_model(
         use_nonlinearity=use_nonlinearity,
         use_attention=use_attention,
         use_positional_encoding=use_positional_encoding,
+        calendar_pe=calendar_pe,
     )
 
 
@@ -185,6 +190,7 @@ def evaluate_and_save(model, test_loader, full_dataset, test_indices, exp_path, 
                 value=batch['value'],
                 var_id=batch['var_id'],
                 freq_id=batch['freq_id'],
+                time_id=batch.get('time_id'),
             )
             preds.extend(out.tolist())
             targets.extend(batch['target'].tolist())
@@ -326,7 +332,8 @@ def objective(trial, config, csv_path, exp_path, suffix):
         for batch in train_loader:
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
-                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                time_id=batch.get('time_id'),
             )
             loss = criterion(out, batch['target'])
             optimizer.zero_grad()
@@ -340,7 +347,8 @@ def objective(trial, config, csv_path, exp_path, suffix):
             for batch in val_loader:
                 batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
-                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                    time_id=batch.get('time_id'),
                 )
                 total_val += criterion(out, batch['target']).item()
         avg_val = total_val / len(val_loader)
@@ -449,6 +457,7 @@ def evaluate_and_save_ticker(model, dataset, ticker_info, ticker_exp_path, suffi
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
                 value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                time_id=batch.get('time_id'),
             )
             preds.extend(out.tolist())
             targets.extend(batch['target'].tolist())
@@ -508,7 +517,8 @@ def run_concatenated_training(config, project_root, exp_path, suffix):
         for batch in train_loader:
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
-                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                time_id=batch.get('time_id'),
             )
             loss = criterion(out, batch['target'])
             optimizer.zero_grad()
@@ -523,7 +533,8 @@ def run_concatenated_training(config, project_root, exp_path, suffix):
             for batch in test_loader:
                 batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
-                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                    time_id=batch.get('time_id'),
                 )
                 total_test += criterion(out, batch['target']).item()
         avg_test = total_test / len(test_loader)
@@ -663,7 +674,8 @@ def objective_concatenated(trial, config, project_root, exp_path, suffix,
         model.train()
         for batch in train_loader:
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-            out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'])
+            out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                       time_id=batch.get('time_id'))
             loss = criterion(out, batch['target'])
             optimizer.zero_grad()
             loss.backward()
@@ -674,7 +686,8 @@ def objective_concatenated(trial, config, project_root, exp_path, suffix,
         with torch.no_grad():
             for batch in val_loader:
                 batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-                out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'])
+                out = model(value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                       time_id=batch.get('time_id'))
                 total_val += criterion(out, batch['target']).item()
         avg_val = total_val / len(val_loader)
 
@@ -819,7 +832,8 @@ def run_standard_training(config, csv_path, exp_path, suffix):
         for batch in train_loader:
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             out = model(
-                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                time_id=batch.get('time_id'),
             )
             loss = criterion(out, batch['target'])
             optimizer.zero_grad()
@@ -835,7 +849,8 @@ def run_standard_training(config, csv_path, exp_path, suffix):
             for batch in test_loader:
                 batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
                 out = model(
-                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id']
+                    value=batch['value'], var_id=batch['var_id'], freq_id=batch['freq_id'],
+                    time_id=batch.get('time_id'),
                 )
                 total_test += criterion(out, batch['target']).item()
         avg_test = total_test / len(test_loader)

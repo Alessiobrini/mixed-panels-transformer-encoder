@@ -109,6 +109,7 @@ class MixedFrequencyTransformer(nn.Module):
         use_nonlinearity: bool = True,
         use_attention: bool = True,
         use_positional_encoding: bool = True,
+        calendar_pe: bool = False,
     ):
         super().__init__()
         self.d_input = 1 + d_freq + d_var
@@ -116,6 +117,7 @@ class MixedFrequencyTransformer(nn.Module):
         self.use_attention = use_attention
         self.max_len = max_len
         self.positional_encoding_enabled = use_positional_encoding
+        self.calendar_pe = calendar_pe
 
         # Learnable embeddings
         self.freq_embedding = nn.Embedding(freq_vocab_size, d_freq)
@@ -171,6 +173,7 @@ class MixedFrequencyTransformer(nn.Module):
         value: torch.Tensor,     # [B, T]
         var_id: torch.Tensor,    # [B, T]
         freq_id: torch.Tensor,   # [B, T]
+        time_id: torch.Tensor = None,  # [B, T] — calendar day offsets
     ) -> torch.Tensor:
         value_unsqueezed = value.unsqueeze(-1)                # [B, T, 1]
         var_emb = self.var_embedding(var_id)                  # [B, T, d_var]
@@ -182,7 +185,10 @@ class MixedFrequencyTransformer(nn.Module):
         z_proj = self.z_proj_norm(z_proj)
 
         if self.positional_encoding_enabled:
-            pos_enc = self._get_positional_encoding(z_proj)
+            if self.calendar_pe and time_id is not None:
+                pos_enc = self._get_calendar_positional_encoding(time_id)
+            else:
+                pos_enc = self._get_positional_encoding(z_proj)
             pos_enc = self.pos_enc_norm(pos_enc)
             z_proj = z_proj + pos_enc
 
@@ -192,6 +198,7 @@ class MixedFrequencyTransformer(nn.Module):
         return pred.squeeze(-1)                                      # [B]
 
     def _get_positional_encoding(self, x: torch.Tensor) -> torch.Tensor:
+        """Sequential positional encoding (default): position 0, 1, 2, ..."""
         seq_len = x.size(1)
         if seq_len > self.max_len:
             raise ValueError(
@@ -204,6 +211,22 @@ class MixedFrequencyTransformer(nn.Module):
             )
 
         return self.positional_encoding[:seq_len, :].unsqueeze(0)
+
+    def _get_calendar_positional_encoding(self, time_id: torch.Tensor) -> torch.Tensor:
+        """Calendar-aware positional encoding: tokens on the same day share the same PE.
+
+        Uses the pre-computed sinusoidal table indexed by time_id (calendar day
+        offsets) rather than sequential position. Time IDs are normalized to
+        start from 0 within each sequence to fit within max_len.
+        """
+        if self.positional_encoding is None:
+            raise RuntimeError(
+                "Positional encoding is disabled but _get_calendar_positional_encoding was called"
+            )
+        # Normalize time_ids to start from 0 within each batch element
+        time_id_norm = time_id - time_id.min(dim=1, keepdim=True).values  # [B, T]
+        time_id_norm = time_id_norm.clamp(max=self.max_len - 1)
+        return self.positional_encoding[time_id_norm]  # [B, T, d_model]
 
 
 

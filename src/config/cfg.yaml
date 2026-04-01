@@ -124,6 +124,7 @@ model:
     use_nonlinearity: true
     use_attention: true
     use_positional_encoding: true
+    calendar_pe: false
 
   ar:
     max_lag: 40
