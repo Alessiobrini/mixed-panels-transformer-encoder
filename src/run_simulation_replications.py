@@ -113,12 +113,16 @@ def build_variant_config(prefix: str, regime: str, sim_seed: int, init_seed: int
     # Per-seed intermediate file names so concurrent seeds (e.g. a SLURM array) never
     # collide on the shared filesystem. transformer_preds stay in the unique exp folder
     # (train.py writes them there with the plain suffix), so they are left untouched.
+    # ABSOLUTE paths: midas.R resolves the data path relative to its working directory,
+    # which on the cluster is NOT the project root (~/.bashrc / R profile changes it).
+    # Python steps build paths from project_root regardless; MIDAS needs the absolute path.
+    base = str(PROJECT_ROOT)
     cfg.setdefault("paths", {})
     cfg["paths"]["data_processed_template_simulation"] = (
-        f"data/processed/long_format_synth_s{sim_seed}_{{suffix}}.csv")
+        f"{base}/data/processed/long_format_synth_s{sim_seed}_{{suffix}}.csv")
     cfg["paths"].setdefault("outputs", {})
-    cfg["paths"]["outputs"]["ar_preds"] = f"outputs/ar_preds_s{sim_seed}_{{suffix}}.csv"
-    cfg["paths"]["outputs"]["midas_preds"] = f"outputs/midas_preds_s{sim_seed}_{{suffix}}.csv"
+    cfg["paths"]["outputs"]["ar_preds"] = f"{base}/outputs/ar_preds_s{sim_seed}_{{suffix}}.csv"
+    cfg["paths"]["outputs"]["midas_preds"] = f"{base}/outputs/midas_preds_s{sim_seed}_{{suffix}}.csv"
     return cfg
 
 
