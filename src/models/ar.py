@@ -178,6 +178,7 @@ def run_concatenated_ar_baseline(
 # Main script
 # ------------------------
 if __name__ == "__main__":
+    import argparse
     from src.utils.config import Config
     from src.utils.data_paths import (
         get_output_path,
@@ -185,7 +186,11 @@ if __name__ == "__main__":
         resolve_target_variable,
     )
 
-    cfg_path = project_root / "src" / "config" / "cfg.yaml"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    args = parser.parse_args()
+
+    cfg_path = Path(args.config) if args.config else project_root / "src" / "config" / "cfg.yaml"
     config = Config(cfg_path)
 
     DATA_PATH, suffix, _, _ = resolve_data_paths(config, project_root)

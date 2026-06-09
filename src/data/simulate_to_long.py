@@ -306,8 +306,13 @@ def to_long(df_wide: pd.DataFrame, freq_label: str) -> pd.DataFrame:
     return out
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    args = parser.parse_args()
+
     # --- Read config and match your existing I/O contract ---
-    cfg_path = project_root / "src" / "config" / "cfg.yaml"
+    cfg_path = Path(args.config) if args.config else project_root / "src" / "config" / "cfg.yaml"
     config = Config(cfg_path)
 
     # knobs (choose defaults that mirror your real pipeline)

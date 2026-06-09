@@ -85,7 +85,12 @@ if __name__ == "__main__":
     # ------------------------
     # Config
     # ------------------------
-    cfg_path = project_root / "src" / "config" / "cfg.yaml"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=None, help="Path to config YAML")
+    args = parser.parse_args()
+
+    cfg_path = Path(args.config) if args.config else project_root / "src" / "config" / "cfg.yaml"
     config = Config(cfg_path)
     
     # Determine suffix

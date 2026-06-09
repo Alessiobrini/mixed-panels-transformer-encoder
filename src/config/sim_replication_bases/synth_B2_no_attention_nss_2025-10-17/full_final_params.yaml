@@ -1,0 +1,9 @@
+activation: gelu
+d_freq: 128
+d_model: 512
+d_var: 16
+dim_feedforward: 32
+dropout: 0.0
+lr: 0.0003
+nhead: 1
+num_layers: 1

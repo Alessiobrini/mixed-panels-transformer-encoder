@@ -1,0 +1,9 @@
+activation: relu
+d_freq: 2
+d_model: 64
+d_var: 128
+dim_feedforward: 32
+dropout: 0.05
+lr: 0.0003
+nhead: 1
+num_layers: 4
