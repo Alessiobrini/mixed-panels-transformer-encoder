@@ -105,18 +105,21 @@ if __name__ == "__main__":
         for key in config.evaluation.forecast_files:
             src_path = get_output_path(config, project_root, key, suffix)
 
-            # Only copy AR and MIDAS predictions; transformer already lives there
-            if key != "transformer_preds":
-                dst_path = exp_path / src_path.name
-                shutil.copy(src_path, dst_path)
-    
-    # Build list of forecast-CSV paths
+            # Only copy AR and MIDAS predictions; transformer already lives there.
+            # Skip any baseline whose file is absent (e.g. MIDAS failed/skipped on a wide panel).
+            if key != "transformer_preds" and src_path.exists():
+                shutil.copy(src_path, exp_path / src_path.name)
+
+    # Build list of forecast-CSV paths (only those that exist)
     forecast_dir = exp_path if exp_name else project_root / "outputs"
     forecast_filenames = [
         Path(getattr(config.paths.outputs, key).format(suffix=suffix)).name
         for key in config.evaluation.forecast_files
     ]
-    FORECAST_PATHS = [forecast_dir / name for name in forecast_filenames]
+    FORECAST_PATHS = [forecast_dir / name for name in forecast_filenames if (forecast_dir / name).exists()]
+    missing = [name for name in forecast_filenames if not (forecast_dir / name).exists()]
+    if missing:
+        print(f"[evaluate] skipping absent forecast files: {missing}")
 
     
     TRUE_COL = config.evaluation.true_col

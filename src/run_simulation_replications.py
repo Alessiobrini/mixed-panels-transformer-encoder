@@ -78,6 +78,10 @@ HP_KEYS = ["d_model", "nhead", "num_layers", "dropout", "lr",
 # the cluster) using the committed bundle src/config/sim_replication_bases.
 BASES_DIR = EXPERIMENT_DIR
 
+# Optional simulation-dimension overrides (set from CLI in main): p_x, p_y, latent_dim,
+# nonlinearity_intensity. Used to test wider cross-sections / more factors than the base DGP.
+SIM_OVERRIDES = {}
+
 
 def canonical_folder(prefix: str, regime: str) -> Path:
     tag, date = REGIMES[regime]
@@ -97,6 +101,8 @@ def build_variant_config(prefix: str, regime: str, sim_seed: int, init_seed: int
     hp = load_yaml(folder / "full_final_params.yaml")
 
     cfg["simulation"]["seed"] = sim_seed
+    for k, v in SIM_OVERRIDES.items():     # widen cross-section / change factor count, etc.
+        cfg["simulation"][k] = v
     cfg["training"]["seed"] = init_seed
     cfg["training"]["optimize"] = True
     cfg["training"]["experiment_name"] = exp_name
@@ -181,6 +187,9 @@ def main() -> None:
     p.add_argument("--bases-dir", default=None,
                    help="dir with canonical {used_config,full_final_params}.yaml per variant "
                         "(default outputs/experiments; use src/config/sim_replication_bases on the cluster)")
+    p.add_argument("--sim-px", type=int, default=None, help="override simulation.p_x (monthly cross-section)")
+    p.add_argument("--sim-py", type=int, default=None, help="override simulation.p_y (quarterly cross-section)")
+    p.add_argument("--sim-q", type=int, default=None, help="override simulation.latent_dim (# factors)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -194,6 +203,12 @@ def main() -> None:
     if args.bases_dir:
         BASES_DIR = Path(args.bases_dir) if Path(args.bases_dir).is_absolute() \
             else PROJECT_ROOT / args.bases_dir
+    if args.sim_px is not None:
+        SIM_OVERRIDES["p_x"] = args.sim_px
+    if args.sim_py is not None:
+        SIM_OVERRIDES["p_y"] = args.sim_py
+    if args.sim_q is not None:
+        SIM_OVERRIDES["latent_dim"] = args.sim_q
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]
@@ -253,7 +268,11 @@ def main() -> None:
             run([py, str(SCRIPTS["simulate"]), "--config", str(data_cfg_path)], "simulate")
             run([py, str(SCRIPTS["ar"]), "--config", str(data_cfg_path)], "ar")
             if not args.skip_midas:
-                run([args.rscript, str(SCRIPTS["midas"]), str(data_cfg_path)], "midas")
+                try:  # MIDAS is numerically fragile on some draws / wide panels; non-fatal
+                    run([args.rscript, str(SCRIPTS["midas"]), str(data_cfg_path)], "midas")
+                except Exception as e:
+                    failures.append(f"{regime} ss{ss} midas: {str(e)[:200]}")
+                    print(f"WARN midas failed for {regime} ss{ss} — continuing without MIDAS: {str(e)[:150]}", flush=True)
 
             # write per-variant configs, then train+eval the missing ones (parallel within seed)
             jobs = {}

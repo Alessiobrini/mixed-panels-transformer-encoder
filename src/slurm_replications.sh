@@ -36,22 +36,36 @@ cd "$PROJECT_ROOT"
 mkdir -p outputs/replications/slurm data/processed outputs/experiments
 
 RSCRIPT="/hpc/group/darec/ab978/miniconda3/envs/tsa-dev/bin/Rscript"
-SEED=$((2000 + SLURM_ARRAY_TASK_ID))
 
-echo "=== Replication task: sim_seed=${SEED} (array ${SLURM_ARRAY_TASK_ID}) on $(hostname) ==="
+# Parameters (env-overridable; defaults reproduce the canonical N=100 repl100 run).
+# Override at submit time, e.g.:
+#   sbatch --array=0-9 --export=ALL,TAG=wide_p3q8,KINITS=3,REGIMES=high,STARTSEED=3000,SIMPX=100,SIMPY=3,SIMQ=8 src/slurm_replications.sh
+TAG="${TAG:-repl100}"
+KINITS="${KINITS:-5}"
+REGIMES="${REGIMES:-all}"
+STARTSEED="${STARTSEED:-2000}"
+SEED=$((STARTSEED + SLURM_ARRAY_TASK_ID))
 
-# One seed, all regimes x variants. workers=1 (one GPU per task). --no-manifest avoids
-# manifest write races across tasks; the unified manifest is built later by the aggregate
-# job via --collect-only. --bases-dir uses the committed tuned-HP bundle (outputs/ is gitignored).
+# Optional simulation-dimension overrides (only passed if set)
+SIMARGS=""
+[ -n "${SIMPX:-}" ] && SIMARGS="$SIMARGS --sim-px $SIMPX"
+[ -n "${SIMPY:-}" ] && SIMARGS="$SIMARGS --sim-py $SIMPY"
+[ -n "${SIMQ:-}" ]  && SIMARGS="$SIMARGS --sim-q $SIMQ"
+
+echo "=== ${TAG}: sim_seed=${SEED} (array ${SLURM_ARRAY_TASK_ID}) regimes=${REGIMES} k=${KINITS} sim=[${SIMARGS:-base}] on $(hostname) ==="
+
+# One seed, all variants. workers=1 (one GPU per task). --no-manifest avoids manifest write
+# races; the unified manifest is built later by the aggregate job via --collect-only.
 python3 src/run_simulation_replications.py \
   --seeds "${SEED}" \
-  --regimes all --variants all \
+  --regimes "${REGIMES}" --variants all \
   --study path --init-seed 125 \
-  --k-inits 5 \
+  --k-inits "${KINITS}" \
   --workers 1 \
-  --tag repl100 \
+  --tag "${TAG}" \
   --bases-dir src/config/sim_replication_bases \
   --rscript "${RSCRIPT}" \
+  ${SIMARGS} \
   --no-manifest
 
-echo "=== Done sim_seed=${SEED} ==="
+echo "=== Done ${TAG} sim_seed=${SEED} ==="
