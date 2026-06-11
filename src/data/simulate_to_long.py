@@ -258,6 +258,7 @@ def simulate_lf_block(
     gF=None,
     spectral_target=0.99,
     almon_flat=False,
+    within_quarter_avg=False,
 ):
     T, _ = F.shape
     idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
@@ -274,6 +275,8 @@ def simulate_lf_block(
             f"(target={spectral_target:.4f})"
         )
     Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng, flat=almon_flat)
+    # Single loading matrix for the within-quarter-average ("flow") specification.
+    Lambda_avg = make_almon_lag_matrices(1, p_y, d_g, rng)[0] if within_quarter_avg else None
     Sigma = cov_scale * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
@@ -289,11 +292,19 @@ def simulate_lf_block(
         # AR(Ly): use lags Y[i-1], Y[i-2], ..., Y[i-Ly]
         max_l = min(Ly, i)
         ar = sum(C[l - 1] @ Y[i - l] for l in range(1, max_l + 1))
-        factor_terms = sum(
-            Lambda_fy[lag] @ gF[quarter_month_idx - lag]
-            for lag in range(q_fy + 1)
-            if quarter_month_idx - lag >= 0
-        )
+        if within_quarter_avg:
+            # Target depends on the AVERAGE of the monthly factor over the r within-quarter
+            # months (a flow). A quarter-end (stock) observer cannot recover this average,
+            # so monthly data is needed to form it -> high-frequency value by construction.
+            lo = max(0, quarter_month_idx - r + 1)
+            gbar = gF[lo:quarter_month_idx + 1].mean(axis=0)
+            factor_terms = Lambda_avg @ gbar
+        else:
+            factor_terms = sum(
+                Lambda_fy[lag] @ gF[quarter_month_idx - lag]
+                for lag in range(q_fy + 1)
+                if quarter_month_idx - lag >= 0
+            )
         Y[i] = ar + factor_terms + eps[i]
     return idx_q, Y
 
@@ -452,6 +463,7 @@ if __name__ == "__main__":
         gF=gF_full,
         spectral_target=spectral_target_y,
         almon_flat=getattr(config.simulation, "almon_flat", False),
+        within_quarter_avg=getattr(config.simulation, "within_quarter_avg", False),
     )  # [T_Q_full, p_y]
 
     # Discard burn-in observations across all simulated series

@@ -192,6 +192,8 @@ def main() -> None:
     p.add_argument("--sim-q", type=int, default=None, help="override simulation.latent_dim (# factors)")
     p.add_argument("--sim-almon-flat", action="store_true",
                    help="flatten the target's Almon lag weights so within-quarter monthly factors matter")
+    p.add_argument("--sim-wq-avg", action="store_true",
+                   help="target depends on the within-quarter AVERAGE of the monthly factor (flow)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -213,6 +215,8 @@ def main() -> None:
         SIM_OVERRIDES["latent_dim"] = args.sim_q
     if args.sim_almon_flat:
         SIM_OVERRIDES["almon_flat"] = True
+    if args.sim_wq_avg:
+        SIM_OVERRIDES["within_quarter_avg"] = True
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]
