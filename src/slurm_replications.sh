@@ -51,6 +51,7 @@ SIMARGS=""
 [ -n "${SIMPX:-}" ] && SIMARGS="$SIMARGS --sim-px $SIMPX"
 [ -n "${SIMPY:-}" ] && SIMARGS="$SIMARGS --sim-py $SIMPY"
 [ -n "${SIMQ:-}" ]  && SIMARGS="$SIMARGS --sim-q $SIMQ"
+[ -n "${ALMONFLAT:-}" ] && SIMARGS="$SIMARGS --sim-almon-flat"
 
 echo "=== ${TAG}: sim_seed=${SEED} (array ${SLURM_ARRAY_TASK_ID}) regimes=${REGIMES} k=${KINITS} sim=[${SIMARGS:-base}] on $(hostname) ==="
 
