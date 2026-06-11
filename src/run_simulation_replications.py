@@ -190,6 +190,8 @@ def main() -> None:
     p.add_argument("--sim-px", type=int, default=None, help="override simulation.p_x (monthly cross-section)")
     p.add_argument("--sim-py", type=int, default=None, help="override simulation.p_y (quarterly cross-section)")
     p.add_argument("--sim-q", type=int, default=None, help="override simulation.latent_dim (# factors)")
+    p.add_argument("--sim-almon-flat", action="store_true",
+                   help="flatten the target's Almon lag weights so within-quarter monthly factors matter")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -209,6 +211,8 @@ def main() -> None:
         SIM_OVERRIDES["p_y"] = args.sim_py
     if args.sim_q is not None:
         SIM_OVERRIDES["latent_dim"] = args.sim_q
+    if args.sim_almon_flat:
+        SIM_OVERRIDES["almon_flat"] = True
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]

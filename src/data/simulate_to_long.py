@@ -155,10 +155,19 @@ def _student_t_noise(rng, size, Sigma, df):
     return (base / scale[..., None]) * adjust
 
 # --------- simulate HF (monthly) and LF (quarterly) blocks ----------
-def _almon_polynomial_weights(num_lags: int, rng, degree: int = 2):
-    """Return Almon polynomial weights that decay with the lag index."""
+def _almon_polynomial_weights(num_lags: int, rng, degree: int = 2, flat: bool = False):
+    """Return Almon polynomial weights that decay with the lag index.
+
+    If ``flat`` is True, return (near-)uniform weights instead of decaying ones. This
+    makes a quarterly target depend roughly equally on every within-quarter monthly
+    factor value, so the within-quarter path (recoverable only from high-frequency data)
+    carries real signal -- used to test whether high-frequency inputs then help.
+    """
     if num_lags <= 0:
         return np.zeros(0, dtype=float)
+
+    if flat:
+        return np.ones(num_lags, dtype=float) / num_lags
 
     idx = np.arange(num_lags, dtype=float)
     X = np.vstack([idx ** d for d in range(degree + 1)]).T
@@ -172,11 +181,11 @@ def _almon_polynomial_weights(num_lags: int, rng, degree: int = 2):
     return weights
 
 
-def make_almon_lag_matrices(num_lags: int, out_dim: int, factor_dim: int, rng, degree: int = 2):
+def make_almon_lag_matrices(num_lags: int, out_dim: int, factor_dim: int, rng, degree: int = 2, flat: bool = False):
     if num_lags <= 0:
         return np.zeros((0, out_dim, factor_dim))
 
-    weights = _almon_polynomial_weights(num_lags, rng, degree=degree)
+    weights = _almon_polynomial_weights(num_lags, rng, degree=degree, flat=flat)
     base_loadings = rng.uniform(0.1, 0.6, size=(out_dim, factor_dim))
     Lambda = np.zeros((num_lags, out_dim, factor_dim))
     for lag in range(num_lags):
@@ -248,6 +257,7 @@ def simulate_lf_block(
     noise_rescale=1.0,
     gF=None,
     spectral_target=0.99,
+    almon_flat=False,
 ):
     T, _ = F.shape
     idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
@@ -263,7 +273,7 @@ def simulate_lf_block(
             f"[simulate_lf_block] spectral radius {rho_before:.4f} -> {rho_after:.4f} "
             f"(target={spectral_target:.4f})"
         )
-    Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng)
+    Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng, flat=almon_flat)
     Sigma = cov_scale * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
@@ -441,6 +451,7 @@ if __name__ == "__main__":
         noise_rescale=noise_rescale_y,
         gF=gF_full,
         spectral_target=spectral_target_y,
+        almon_flat=getattr(config.simulation, "almon_flat", False),
     )  # [T_Q_full, p_y]
 
     # Discard burn-in observations across all simulated series
