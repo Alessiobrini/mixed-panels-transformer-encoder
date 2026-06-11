@@ -198,6 +198,9 @@ def main() -> None:
                    help="latent factor VAR spectral radius (default 0.9; lower => weaker own-history)")
     p.add_argument("--sim-spec-y", type=float, default=None,
                    help="quarterly target AR spectral radius (default 0.4; lower => less self-prediction)")
+    p.add_argument("--sim-hf-share", type=float, default=None,
+                   help="fraction of factor columns that drive ONLY the target among quarterly series "
+                        "(HF-only factors; monthly block sees all). 0 = off.")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -225,6 +228,8 @@ def main() -> None:
         SIM_OVERRIDES["factor_spectral_target"] = args.sim_factor_rho
     if args.sim_spec_y is not None:
         SIM_OVERRIDES["spectral_target_y"] = args.sim_spec_y
+    if args.sim_hf_share is not None:
+        SIM_OVERRIDES["hf_only_share"] = args.sim_hf_share
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]

@@ -259,6 +259,7 @@ def simulate_lf_block(
     spectral_target=0.99,
     almon_flat=False,
     within_quarter_avg=False,
+    hf_only_share=0.0,
 ):
     T, _ = F.shape
     idx_q = np.arange(r - 1, T, r)  # e.g., r=3 -> 2,5,8,... align LF at every r-th HF step
@@ -277,6 +278,20 @@ def simulate_lf_block(
     Lambda_fy = make_almon_lag_matrices(q_fy + 1, p_y, d_g, rng, flat=almon_flat)
     # Single loading matrix for the within-quarter-average ("flow") specification.
     Lambda_avg = make_almon_lag_matrices(1, p_y, d_g, rng)[0] if within_quarter_avg else None
+
+    # High-frequency-only factors: the first k of the d_g factor (gF) columns drive ONLY the
+    # target series Y1 (column 0) among the quarterly block -- the other quarterly series Y2..Yp
+    # do NOT load on them. The monthly X block loads on every column (Lambda_fx untouched), so the
+    # quarterly-only model (AB5) is structurally blind to these factors while a model with monthly
+    # data can recover and forecast them. Masking is applied AFTER drawing the loadings, so the
+    # hf_only_share=0 path is bit-identical to before. (within_quarter_avg not combined in this search.)
+    if hf_only_share and hf_only_share > 0 and p_y > 1:
+        k = min(d_g, max(1, int(round(hf_only_share * d_g))))
+        Lambda_fy[:, 1:, :k] = 0.0
+        if Lambda_avg is not None:
+            Lambda_avg[1:, :k] = 0.0
+        print(f"[simulate_lf_block] HF-only: {k}/{d_g} factor columns drive only the target Y1")
+
     Sigma = cov_scale * np.eye(p_y)
 
     Y = np.zeros((len(idx_q), p_y))
@@ -467,6 +482,7 @@ if __name__ == "__main__":
         spectral_target=spectral_target_y,
         almon_flat=getattr(config.simulation, "almon_flat", False),
         within_quarter_avg=getattr(config.simulation, "within_quarter_avg", False),
+        hf_only_share=getattr(config.simulation, "hf_only_share", 0.0),
     )  # [T_Q_full, p_y]
 
     # Discard burn-in observations across all simulated series
