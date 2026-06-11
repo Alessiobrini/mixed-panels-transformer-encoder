@@ -79,12 +79,12 @@ def _rescale_var_mats(mats, target=0.99):
 
     return mats, rho_before, rho_after
 
-def simulate_latent_VAR2(T, q, rng=None, burn_in=300):
+def simulate_latent_VAR2(T, q, rng=None, burn_in=300, spectral_target=0.9):
     if rng is None:
         rng = np.random.RandomState(123)
     Phi1 = rng.uniform(-0.6, 0.6, size=(q, q))
     Phi2 = rng.uniform(-0.6, 0.6, size=(q, q))
-    Phi1, Phi2 = _make_stable_var2(Phi1, Phi2, target=0.9)
+    Phi1, Phi2 = _make_stable_var2(Phi1, Phi2, target=spectral_target)
     Sigma = 0.5 * np.eye(q)
     TT = T + burn_in
     F = np.zeros((TT, q))
@@ -425,7 +425,10 @@ if __name__ == "__main__":
         intensity=nonlinear_intensity,
     )
 
-    F_full, _ = simulate_latent_VAR2(T_months, q, rng=rng, burn_in=burn_in)
+    F_full, _ = simulate_latent_VAR2(
+        T_months, q, rng=rng, burn_in=burn_in,
+        spectral_target=getattr(config.simulation, "factor_spectral_target", 0.9),
+    )
     gF_full = link(F_full)
 
     noise_x_distribution = getattr(config.simulation, "noise_x_distribution", "student_t")

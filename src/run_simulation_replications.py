@@ -194,6 +194,8 @@ def main() -> None:
                    help="flatten the target's Almon lag weights so within-quarter monthly factors matter")
     p.add_argument("--sim-wq-avg", action="store_true",
                    help="target depends on the within-quarter AVERAGE of the monthly factor (flow)")
+    p.add_argument("--sim-factor-rho", type=float, default=None,
+                   help="latent factor VAR spectral radius (default 0.9; lower => weaker own-history)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -217,6 +219,8 @@ def main() -> None:
         SIM_OVERRIDES["almon_flat"] = True
     if args.sim_wq_avg:
         SIM_OVERRIDES["within_quarter_avg"] = True
+    if args.sim_factor_rho is not None:
+        SIM_OVERRIDES["factor_spectral_target"] = args.sim_factor_rho
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]
