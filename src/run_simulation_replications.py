@@ -201,6 +201,10 @@ def main() -> None:
     p.add_argument("--sim-hf-share", type=float, default=None,
                    help="fraction of factor columns that drive ONLY the target among quarterly series "
                         "(HF-only factors; monthly block sees all). 0 = off.")
+    p.add_argument("--sim-noise-x", type=float, default=None,
+                   help="monthly-block noise multiplier (noise_rescale_x; lower => cleaner monthly data)")
+    p.add_argument("--sim-noise-y", type=float, default=None,
+                   help="quarterly-block noise multiplier (noise_rescale_y; higher => noisier target/quarterly)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -230,6 +234,10 @@ def main() -> None:
         SIM_OVERRIDES["spectral_target_y"] = args.sim_spec_y
     if args.sim_hf_share is not None:
         SIM_OVERRIDES["hf_only_share"] = args.sim_hf_share
+    if args.sim_noise_x is not None:
+        SIM_OVERRIDES["noise_rescale_x"] = args.sim_noise_x
+    if args.sim_noise_y is not None:
+        SIM_OVERRIDES["noise_rescale_y"] = args.sim_noise_y
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]
