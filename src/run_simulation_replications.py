@@ -102,7 +102,12 @@ def build_variant_config(prefix: str, regime: str, sim_seed: int, init_seed: int
 
     cfg["simulation"]["seed"] = sim_seed
     for k, v in SIM_OVERRIDES.items():     # widen cross-section / change factor count, etc.
-        cfg["simulation"][k] = v
+        if k in ("q_fy", "q_fx"):          # nested under simulation.factor_lags
+            fl = dict(cfg["simulation"].get("factor_lags") or {})
+            fl[k] = v
+            cfg["simulation"]["factor_lags"] = fl
+        else:
+            cfg["simulation"][k] = v
     cfg["training"]["seed"] = init_seed
     cfg["training"]["optimize"] = True
     cfg["training"]["experiment_name"] = exp_name
@@ -205,6 +210,10 @@ def main() -> None:
                    help="monthly-block noise multiplier (noise_rescale_x; lower => cleaner monthly data)")
     p.add_argument("--sim-noise-y", type=float, default=None,
                    help="quarterly-block noise multiplier (noise_rescale_y; higher => noisier target/quarterly)")
+    p.add_argument("--sim-qfy", type=int, default=None,
+                   help="factor-lag length into the quarterly target (factor_lags.q_fy; Lin-Michailidis use ~15/6)")
+    p.add_argument("--sim-qfx", type=int, default=None,
+                   help="factor-lag length into the monthly block (factor_lags.q_fx; Lin-Michailidis use ~6/12)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -238,6 +247,10 @@ def main() -> None:
         SIM_OVERRIDES["noise_rescale_x"] = args.sim_noise_x
     if args.sim_noise_y is not None:
         SIM_OVERRIDES["noise_rescale_y"] = args.sim_noise_y
+    if args.sim_qfy is not None:
+        SIM_OVERRIDES["q_fy"] = args.sim_qfy
+    if args.sim_qfx is not None:
+        SIM_OVERRIDES["q_fx"] = args.sim_qfx
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]
