@@ -35,6 +35,13 @@ EXPERIMENT_DIR = REPO / "outputs" / "experiments"
 TARGETS = ["GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE",
            "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL", "FPIx", "EXPGSC1", "IMPGSC1"]
 
+# Paper's exact target grouping (Tab:empirical1/2 and the ablation tables share it). The
+# revision reproduces the SAME tables with lead=2, so we keep this grouping rather than
+# recomputing it (use --regroup to recompute from the data instead). Note the paper shows
+# only 10 of the 13 targets in the main competing tables.
+PAPER_WIN = ["OUTNFB", "PCECTPI", "PCEPILFE", "CPIAUCSL", "GDPC1"]
+PAPER_LOSE = ["DPIC96", "EXPGSC1", "FPIx", "CPILFESL", "IMPGSC1"]
+
 COMPETING = [("MPTE", "transformer"), ("AR", "ar"), ("MIDAS", "midas"),
              ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")]
 # ablation folder suffix -> display label (B5->AB4, B6->AB5, matching the paper)
@@ -203,6 +210,9 @@ def main():
     ap.add_argument("--experiment-date", required=True)
     ap.add_argument("--targets", default=None)
     ap.add_argument("--outdir", default=str(REPO / "outputs" / "tables"))
+    ap.add_argument("--regroup", action="store_true",
+                    help="recompute the win/lose grouping from the data instead of using the "
+                         "paper's fixed grouping (default: keep the paper grouping)")
     args = ap.parse_args()
 
     date = args.experiment_date
@@ -213,8 +223,12 @@ def main():
     comp = metrics_table(date, targets, include_ablations=False)
     abl = metrics_table(date, targets, include_ablations=True)
 
-    win = [t for t in targets if t in comp and mpte_wins_full_rmse(comp, t, COMPETING)]
-    lose = [t for t in targets if t in comp and t not in win]
+    if args.regroup:
+        win = [t for t in targets if t in comp and mpte_wins_full_rmse(comp, t, COMPETING)]
+        lose = [t for t in targets if t in comp and t not in win]
+    else:
+        win = [t for t in PAPER_WIN if t in comp]
+        lose = [t for t in PAPER_LOSE if t in comp]
 
     cap1 = ("Out-of-sample forecasting performance for target series where MPTE achieves the "
             "lowest RMSE over the full sample. The table reports RMSE, MAE and DA for MPTE and "
