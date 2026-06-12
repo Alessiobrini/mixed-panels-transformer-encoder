@@ -1,0 +1,7 @@
+exhibit,script,command
+Table 1 (sim mean(sd)),src/evaluation/aggregate_replications.py,python src/evaluation/aggregate_replications.py --manifest outputs/replications/repl100_lead2_manifest.csv
+Tables 2-6 (FRED competing + ablations + counts),src/evaluation/build_empirical_tables.py,python src/evaluation/build_empirical_tables.py --experiment-date 2026-06-12_lead2 --outdir outputs/revision_exhibits/tables
+Tables 7-10 (DM + MCS),src/evaluation/build_empirical_tables.py,python src/evaluation/build_empirical_tables.py --experiment-date 2026-06-12_lead2 --outdir outputs/revision_exhibits/tables
+Fig:preds (forecast plots),src/evaluation/plot_forecasts_paper.py,python src/evaluation/plot_forecasts_paper.py --experiment-date 2026-06-12_lead2 --outdir outputs/revision_exhibits/figs
+Fig:Az/B (attention heatmaps),src/evaluation/read_aggregate_attention.py,python src/evaluation/aggregate_attention.py then read_aggregate_attention.py on the lead2 checkpoints
+Lead-invariance / reconcile checks,src/evaluation/verify_lead_invariance.py,python src/evaluation/verify_lead_invariance.py invariance ; reconcile --mode sim/fred

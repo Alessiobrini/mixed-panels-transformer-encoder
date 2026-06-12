@@ -1,0 +1,74 @@
+% Reference comparison document for the R2 lead=2 revision.
+% Collects every REGENERATED exhibit (lead=2) in paper order so the revised tables/figures
+% can be eyeballed against the old ones. NOT the paper -- a local reference only.
+% Build: bash build_reference.sh   (runs the generators, then latexmk -pdf reference.tex)
+\documentclass[11pt]{article}
+\usepackage[table]{xcolor}      % [table] needed for \cellcolor inside tabular
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{placeins}
+\usepackage{longtable}
+\usepackage[margin=0.7in]{geometry}
+\usepackage{caption}
+\usepackage{etoolbox}
+% Shrink wide (9-column) tables so they fit the reference page.
+\AtBeginEnvironment{tabular}{\footnotesize\setlength{\tabcolsep}{4pt}}
+
+% \best/\second exactly as in main.tex so highlighting renders identically.
+\definecolor{bestgreen}{HTML}{00A651}
+\definecolor{secondgreen}{HTML}{A8E6B0}
+\newcommand{\best}[1]{\cellcolor{bestgreen}{\textbf{#1}}}
+\newcommand{\second}[1]{\cellcolor{secondgreen}{#1}}
+\graphicspath{{figs/}{./}}
+
+\newcommand{\exhibit}[2]{%
+  \par\bigskip\noindent\textbf{\textcolor{blue}{REVISED}\ #1}\par\nopagebreak
+  \IfFileExists{#2}{\input{#2}}{\par\emph{[not generated yet: \texttt{\detokenize{#2}}]}\par}}
+
+\title{\textbf{REVISED} exhibits --- MPTE lead=2 rerun (R2 revision)}
+\author{Reference for visual comparison vs.\ the published exhibits}
+\date{\today}
+
+\begin{document}
+\maketitle
+This document gathers every regenerated exhibit from the lead=2 rerun, in the paper's order,
+each marked \textcolor{blue}{REVISED}. Simulation tables additionally report the standard
+deviation across the 100 replications in parentheses; empirical exhibits keep the published
+structure (single run). A reproducibility appendix maps each exhibit to its generating command.
+
+\section{Simulation}
+\exhibit{Table 1 --- forecasting accuracy (mean (sd) over 100 reps)}{tables/sim_table1.tex}
+
+\section{Empirical (FRED): competing models}
+\exhibit{Table 2 --- MPTE-wins group (Tab:empirical1)}{tables/empirical1.tex}
+\exhibit{Table 3 --- complement group (Tab:empirical2)}{tables/empirical2.tex}
+\exhibit{Table 4 --- win counts (Tab:empirical3)}{tables/empirical3.tex}
+
+\section{Empirical (FRED): ablations}
+\exhibit{Table 5 --- MPTE-wins group (Tab:empirical\_abl1)}{tables/empirical_abl1.tex}
+\exhibit{Table 6 --- complement group (Tab:empirical\_abl2)}{tables/empirical_abl2.tex}
+
+\section{Empirical (FRED): forecast plots (Fig:preds)}
+\begin{figure}[!ht]\centering
+  \IfFileExists{figs/GDPC1/GDPC1_preds.pdf}{%
+    \begin{minipage}{0.48\textwidth}\centering\includegraphics[width=\textwidth]{figs/GDPC1/GDPC1_preds.pdf}\end{minipage}\hfill
+    \begin{minipage}{0.48\textwidth}\centering\includegraphics[width=\textwidth]{figs/GDPC1/GDPC1_preds_full.pdf}\end{minipage}\\[0.5em]
+    \begin{minipage}{0.48\textwidth}\centering\includegraphics[width=\textwidth]{figs/OUTFNB/OUTNFB_preds.pdf}\end{minipage}\hfill
+    \begin{minipage}{0.48\textwidth}\centering\includegraphics[width=\textwidth]{figs/OUTFNB/OUTNFB_preds_full.pdf}\end{minipage}
+  }{\emph{[forecast plots not generated yet]}}
+  \caption{\textcolor{blue}{REVISED} Out-of-sample forecasts for GDPC1 (top) and OUTNFB (bottom); left pre-COVID, right full sample.}
+\end{figure}
+
+\section{Appendix B: Diebold--Mariano and Model Confidence Set}
+\exhibit{Table 7 --- DM, MPTE vs competing (Tab:DM\_competing)}{tables/dm_competing.tex}
+\exhibit{Table 8 --- MCS, competing (Tab:MCS\_competing)}{tables/mcs_competing.tex}
+\exhibit{Table 9 --- DM, MPTE vs ablations (Tab:DM\_ablations)}{tables/dm_ablations.tex}
+\exhibit{Table 10 --- MCS, ablations (Tab:MCS\_ablations)}{tables/mcs_ablations.tex}
+
+\FloatBarrier
+\section*{Reproducibility appendix}
+Each regenerated exhibit and the exact command that produced it.
+\input{repro_appendix.tex}
+
+\end{document}
