@@ -26,7 +26,10 @@ parser.add_argument("--config", default=None, help="Path to config YAML (default
 parser.add_argument("--rscript", default=None, help="Path to Rscript binary (overrides the platform default)")
 _args, _ = parser.parse_known_args()
 
-cfg_path = Path(_args.config) if _args.config else project_root / "src" / "config" / "cfg.yaml"
+# Resolve to an ABSOLUTE path: midas.R setwd()s away from the project root, so a relative
+# config path passed to it cannot be opened. Absolute fixes the data step, AR, MIDAS, evaluate.
+cfg_path = (Path(_args.config).resolve() if _args.config
+            else project_root / "src" / "config" / "cfg.yaml")
 config = Config(cfg_path)
 use_simulation = is_simulation_enabled(config)
 
