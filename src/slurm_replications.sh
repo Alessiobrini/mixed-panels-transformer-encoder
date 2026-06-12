@@ -60,6 +60,7 @@ SIMARGS=""
 [ -n "${NOISEY:-}" ] && SIMARGS="$SIMARGS --sim-noise-y $NOISEY"
 [ -n "${QFY:-}" ] && SIMARGS="$SIMARGS --sim-qfy $QFY"
 [ -n "${QFX:-}" ] && SIMARGS="$SIMARGS --sim-qfx $QFX"
+[ -n "${LEAD:-}" ] && SIMARGS="$SIMARGS --lead $LEAD"
 
 echo "=== ${TAG}: sim_seed=${SEED} (array ${SLURM_ARRAY_TASK_ID}) regimes=${REGIMES} k=${KINITS} sim=[${SIMARGS:-base}] on $(hostname) ==="
 

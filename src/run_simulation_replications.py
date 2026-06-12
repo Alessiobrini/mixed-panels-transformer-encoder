@@ -82,6 +82,10 @@ BASES_DIR = EXPERIMENT_DIR
 # nonlinearity_intensity. Used to test wider cross-sections / more factors than the base DGP.
 SIM_OVERRIDES = {}
 
+# Optional high-frequency lead (months of the target quarter exposed to the forecast); set
+# from CLI in main, written to cfg.data.lead. 0/None = shipped 1-step-ahead behaviour.
+LEAD = None
+
 
 def canonical_folder(prefix: str, regime: str) -> Path:
     tag, date = REGIMES[regime]
@@ -113,6 +117,8 @@ def build_variant_config(prefix: str, regime: str, sim_seed: int, init_seed: int
     cfg["training"]["experiment_name"] = exp_name
     if epochs is not None:
         cfg["training"]["epochs"] = epochs
+    if LEAD is not None:
+        cfg.setdefault("data", {})["lead"] = LEAD
 
     cfg.setdefault("hyperopt", {})
     cfg["hyperopt"]["n_trials"] = k_inits
@@ -214,6 +220,8 @@ def main() -> None:
                    help="factor-lag length into the quarterly target (factor_lags.q_fy; Lin-Michailidis use ~15/6)")
     p.add_argument("--sim-qfx", type=int, default=None,
                    help="factor-lag length into the monthly block (factor_lags.q_fx; Lin-Michailidis use ~6/12)")
+    p.add_argument("--lead", type=int, default=None,
+                   help="high-frequency lead: months of the target quarter exposed to the forecast (0 = off)")
     p.add_argument("--rscript", default="/opt/homebrew/bin/Rscript")
     p.add_argument("--skip-midas", action="store_true")
     p.add_argument("--no-manifest", action="store_true",
@@ -251,6 +259,9 @@ def main() -> None:
         SIM_OVERRIDES["q_fy"] = args.sim_qfy
     if args.sim_qfx is not None:
         SIM_OVERRIDES["q_fx"] = args.sim_qfx
+    global LEAD
+    if args.lead is not None:
+        LEAD = args.lead
 
     regimes = list(REGIMES) if args.regimes == "all" else args.regimes.split(",")
     variants = VARIANTS if args.variants == "all" else [v for v in VARIANTS if v[0] in args.variants.split(",")]

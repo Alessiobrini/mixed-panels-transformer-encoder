@@ -84,12 +84,25 @@ def prepare_data(csv_path, config):
 
     target_variable = resolve_target_variable(config)
 
-    full_dataset = MixedFrequencyDataset(
-        csv_path,
-        context_days=config.data.context_days,
-        target_variable=target_variable,
-        allowed_frequencies=allowed_freqs,
-    )
+    # Optional high-frequency "lead": extend each target's monthly context into the target
+    # quarter (config.data.lead > 0). Defaults to 0 = shipped behaviour. Temporary subclass.
+    lead = int(getattr(getattr(config, "data", None), "lead", 0) or 0)
+    if lead > 0:
+        from src.data.lead_dataset import LeadMixedFrequencyDataset
+        full_dataset = LeadMixedFrequencyDataset(
+            csv_path,
+            context_days=config.data.context_days,
+            target_variable=target_variable,
+            allowed_frequencies=allowed_freqs,
+            lead=lead,
+        )
+    else:
+        full_dataset = MixedFrequencyDataset(
+            csv_path,
+            context_days=config.data.context_days,
+            target_variable=target_variable,
+            allowed_frequencies=allowed_freqs,
+        )
     n = len(full_dataset)
 
     train_ratio = config.data.train_ratio
