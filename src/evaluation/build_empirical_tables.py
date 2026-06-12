@@ -31,6 +31,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 REPO = Path(__file__).resolve().parents[2]
 EXPERIMENT_DIR = REPO / "outputs" / "experiments"
+import sys
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 TARGETS = ["GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE",
            "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL", "FPIx", "EXPGSC1", "IMPGSC1"]
@@ -205,6 +208,80 @@ def mpte_wins_full_rmse(metrics: dict, target: str, competing_keys) -> bool:
     return min(vals, key=vals.get) == "transformer"
 
 
+# ======================================================================================
+# Appendix B: Diebold-Mariano + Model Confidence Set tables
+# ======================================================================================
+DM_COMPETING = [("MIDAS", "midas"), ("AR", "ar"), ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")]
+DM_ABLATIONS = [("AB1", "AB1"), ("AB2", "AB2"), ("AB3", "AB3"), ("AB4", "AB4"), ("AB5", "AB5")]
+
+
+def _dm_stat(dm_df, base, other):
+    """MPTE(base)-vs-other DM stat with the paper's sign (negative => base lower loss)."""
+    if f"{base} vs {other}" in dm_df.index:
+        return dm_df.loc[f"{base} vs {other}", "DM_stat"]
+    if f"{other} vs {base}" in dm_df.index:
+        return -dm_df.loc[f"{other} vs {base}", "DM_stat"]
+    return np.nan
+
+
+def make_dm_table(date, targets, model_specs, include_abl, caption, label):
+    from src.evaluation.evaluate_forecasts import run_dm_tests
+    header = " & ".join(["Target"] + [lab for lab, _ in model_specs])
+    L = ["% Auto-generated DM table", "\\begin{table}[htbp]", "\\centering",
+         "\\begin{tabular}{@{}l" + "c" * len(model_specs) + "@{}}", "\\toprule",
+         header + " \\\\", "\\midrule"]
+    for t in targets:
+        merged = load_target_frame(date, t, include_ablations=include_abl)
+        if merged is None or "transformer" not in merged.columns:
+            continue
+        cols = ["transformer"] + [k for _, k in model_specs if k in merged.columns]
+        dm = run_dm_tests(merged[cols], merged["true"])
+        vals = [t]
+        for _, k in model_specs:
+            s = _dm_stat(dm, "transformer", k) if k in merged.columns else np.nan
+            vals.append("--" if (s is None or np.isnan(s)) else f"{s:.2f}")
+        L.append(" & ".join(vals) + " \\\\")
+    L += ["\\bottomrule", "\\end{tabular}", f"\\caption{{{caption}}}", f"\\label{{{label}}}",
+          "\\end{table}"]
+    return "\n".join(L)
+
+
+def make_mcs_table(date, targets, col_specs, include_abl, caption, label, exclude_ar=True):
+    """col_specs: [(display, key), ...] the columns shown. MCS computed over the shown models
+    except AR (always excluded, shown as --), matching the paper. seed=42, reps=1000."""
+    from arch.bootstrap import MCS
+    rows = []
+    for t in targets:
+        merged = load_target_frame(date, t, include_ablations=include_abl)
+        if merged is None:
+            rows.append([t] + ["--"] * len(col_specs))
+            continue
+        y = merged["true"].to_numpy()
+        models = {lab: k for lab, k in col_specs
+                  if k in merged.columns and not (exclude_ar and k == "ar")}
+        included = set()
+        if len(models) >= 2:
+            labs = list(models)
+            losses = np.column_stack([(y - merged[models[l]].to_numpy()) ** 2 for l in labs])
+            try:
+                mcs = MCS(losses, size=0.10, reps=1000, method="R",
+                          bootstrap="stationary", seed=42)
+                mcs.compute()
+                included = {labs[i] for i in mcs.included}
+            except Exception:
+                included = set()
+        rows.append([t] + ["\\checkmark" if lab in included else "--" for lab, _ in col_specs])
+    header = " & ".join(["target"] + [lab for lab, _ in col_specs])
+    L = ["% Auto-generated MCS table", "\\begin{table}[htbp]", "\\centering",
+         "\\begin{tabular}{l" + "c" * len(col_specs) + "}", "\\toprule", header + " \\\\",
+         "\\midrule"]
+    for r in rows:
+        L.append(" & ".join(r) + " \\\\")
+    L += ["\\bottomrule", "\\end{tabular}", f"\\caption{{{caption}}}", f"\\label{{{label}}}",
+          "\\end{table}"]
+    return "\n".join(L)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experiment-date", required=True)
@@ -284,6 +361,42 @@ def main():
           "\\end{table}"]
     (outdir / "empirical3.tex").write_text("\n".join(L) + "\n")
     print(f"wrote {outdir / 'empirical3.tex'}")
+
+    # --- Appendix B: DM + MCS tables (all 13 targets, full period) ---
+    all_t = [t for t in targets if (EXPERIMENT_DIR / f"{t}_{date}").is_dir()]
+    dm_cap_c = ("Diebold--Mariano test statistics comparing MPTE against competing models. Each "
+                "entry reports the Diebold--Mariano statistic for the null hypothesis of equal "
+                "predictive accuracy between MPTE and the corresponding competing model for the "
+                "given target series. Negative values indicate lower forecast loss for MPTE "
+                "relative to the competing model, while positive values indicate superior "
+                "performance of the competing model.")
+    dm_cap_a = dm_cap_c.replace("competing models", "ablation models").replace(
+        "competing model", "ablation").replace("competing model.", "ablation.")
+    mcs_cap_c = ("Model Confidence Set (MCS) inclusion for MPTE and competing models across target "
+                 "series at the 95\\% confidence level. A checkmark indicates that the corresponding "
+                 "model is included in the MCS for the given target, while ``--'' denotes exclusion.")
+    mcs_cap_a = ("Model Confidence Set (MCS) inclusion for MPTE and its ablation variants across "
+                 "target series at the 95\\% confidence level. A checkmark indicates that the "
+                 "corresponding specification is included in the MCS for the given target, while "
+                 "``--'' denotes exclusion.")
+    (outdir / "dm_competing.tex").write_text(
+        make_dm_table(date, all_t, DM_COMPETING, False, dm_cap_c, "Tab:DM_competing") + "\n")
+    (outdir / "dm_ablations.tex").write_text(
+        make_dm_table(date, all_t, DM_ABLATIONS, True, dm_cap_a, "Tab:DM_ablations") + "\n")
+    print(f"wrote {outdir / 'dm_competing.tex'}, {outdir / 'dm_ablations.tex'}")
+    try:
+        (outdir / "mcs_competing.tex").write_text(make_mcs_table(
+            date, all_t, [("MPTE", "transformer"), ("MIDAS", "midas"), ("AR", "ar"),
+                          ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")], False, mcs_cap_c,
+            "Tab:MCS_competing") + "\n")
+        (outdir / "mcs_ablations.tex").write_text(make_mcs_table(
+            date, all_t, [("MPTE", "transformer"), ("AB1", "AB1"), ("AB2", "AB2"),
+                          ("AB3", "AB3"), ("AB4", "AB4"), ("AB5", "AB5")], True, mcs_cap_a,
+            "Tab:MCS_ablations", exclude_ar=False) + "\n")
+        print(f"wrote {outdir / 'mcs_competing.tex'}, {outdir / 'mcs_ablations.tex'}")
+    except ModuleNotFoundError:
+        print("WARN: 'arch' not installed -> skipped MCS tables (run on the cluster env where "
+              "arch is available).")
 
     print(f"\nMPTE-wins-RMSE group ({len(win)}): {win}")
     print(f"complement group ({len(lose)}): {lose}")
