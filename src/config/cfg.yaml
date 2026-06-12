@@ -1,192 +1,191 @@
 paths:
-  data_raw_fred_monthly:   "data/raw/fred_data/transf_md.csv"
-  data_raw_fred_quarterly: "data/raw/fred_data/transf_qd.csv"
-  data_processed_template: "data/processed/long_format_fred_{suffix}.csv"
-  data_processed_template_simulation: "data/processed/long_format_synth_{suffix}.csv"
+  data_raw_fred_monthly: data/raw/fred_data/transf_md.csv
+  data_raw_fred_quarterly: data/raw/fred_data/transf_qd.csv
+  data_processed_template: data/processed/long_format_fred_{suffix}.csv
   outputs:
-    transformer_preds:     "outputs/transformer_preds_{suffix}.csv"
-    ar_preds:              "outputs/ar_preds_{suffix}.csv"
-    midas_preds:           "outputs/midas_preds_{suffix}.csv"
-  # visualization:           "src/visualization"
-
-
-simulation:
-  simulate: true
-  seed: 123
-  T_months: 200       # total HF steps
-  ratio: 3            # r months per quarterly observation
-  latent_dim: 3       # q (latent VAR dimension)
-  nonlinearity: rbf   # identity or "rbf"
-  nonlinearity_intensity: 6   # Higher intensity => more RBF centers => more nonlinear behavior.
-  # Optional overrides when using RBF features
-  # nonlinearity_out_dim: 3
-  # nonlinearity_std_match: true
-  Lx: 1               # AR order for X
-  Ly: 1               # AR order for Y
-  factor_lags:
-    q_fx: 4          # number of latent factor lags for monthly block
-    q_fy: 4           # number of latent factor lags for quarterly block
-  p_x: 30              # number of monthly vars -> X1..X8
-  p_y: 5              # number of quarterly vars -> Y1
-  noise_rescale_x: 1.0   # global multiplier for monthly noise shocks
-  noise_rescale_y: 1.0   # global multiplier for quarterly noise shocks
-  spectral_target: 0.8
-  spectral_target_x: 0.5   # optional override for monthly block
-  spectral_target_y: 0.4   # optional override for quarterly block
-  target: Y1
-  use_y_only_predictors: false
-
+    transformer_preds: outputs/transformer_preds_{suffix}.csv
+    ar_preds: outputs/ar_preds_{suffix}.csv
+    midas_preds: outputs/midas_preds_{suffix}.csv
+  data_processed_template_simulation: data/processed/long_format_synth_{suffix}.csv
 features:
-  target:         UNRATE
-  use_y_only_predictors: false
+  target: GDPC1
   monthly_vars:
-    - RPI
-    - INDPRO
-    - CUMFNS
-    - HWI
-    - CLF16OV
-    - CE16OV
-    - UEMPMEAN
-    - CLAIMSx
-    - PAYEMS
-    - CES0600000007
-    - CES0600000008
-    - CES2000000008
-    - CES3000000008
-    - AWOTMAN
-    - AWHMAN
-    - HOUST
-    - DPCERA3M086SBEA
-    - BUSINVx
-    - RETAILx
-    - CMRMTSPLx
-    - M2REAL
-    - TOTRESNS
-    - BUSLOANS
-    - NONREVSL
-    - FEDFUNDS
-    - GS1
-    - GS10
-    - BAA
-    - PCEPI
-    - WPSFD49207
-    - OILPRICEx
-    - S&P 500
-    - S&P PE ratio
-    - TB3MS
-    - TB6MS
+  - RPI
+  - INDPRO
+  - CUMFNS
+  - HWI
+  - CLF16OV
+  - CE16OV
+  - UEMPMEAN
+  - CLAIMSx
+  - PAYEMS
+  - CES0600000007
+  - CES0600000008
+  - CES2000000008
+  - CES3000000008
+  - AWOTMAN
+  - AWHMAN
+  - HOUST
+  - DPCERA3M086SBEA
+  - BUSINVx
+  - RETAILx
+  - CMRMTSPLx
+  - M2REAL
+  - TOTRESNS
+  - BUSLOANS
+  - NONREVSL
+  - FEDFUNDS
+  - GS1
+  - GS10
+  - BAA
+  - PCEPI
+  - WPSFD49207
+  - OILPRICEx
+  - S&P 500
+  - S&P PE ratio
+  - TB3MS
+  - TB6MS
   quarterly_vars:
-    - GDPC1
-    - GPDIC1
-    - PCECC96
-    - DPIC96
-    - OUTNFB
-    - UNRATE
-    - PCECTPI
-    - PCEPILFE
-    - CPIAUCSL
-    - CPILFESL
-    - FPIx
-    - EXPGSC1
-    - IMPGSC1
-  all_monthly:    false
-
+  - GDPC1
+  - GPDIC1
+  - PCECC96
+  - DPIC96
+  - OUTNFB
+  - UNRATE
+  - PCECTPI
+  - PCEPILFE
+  - CPIAUCSL
+  - CPILFESL
+  - FPIx
+  - EXPGSC1
+  - IMPGSC1
+  all_monthly: false
+  use_y_only_predictors: false
 data:
-  context_days: 360
-  train_ratio:  0.8
+  context_days: 720
+  train_ratio: 0.8
   val_ratio: 0.1
-  
-
+  lead: 2
 training:
-  seed:           125 #42
-  batch_size:     16
-  epochs:         2
-  lr:             1.0e-4
-  optimize:       false       # toggle Optuna
-  experiment_name: 'Test6'       # optional, or your custom name
-  patience:       10           # optional, early-stopping patience
-
+  seed: 125
+  batch_size: 16
+  epochs: 300
+  lr: 0.0001
+  optimize: true
+  experiment_name: GDPC1_2026-06-12_lead2
+  patience: 10
 validation:
   expected_freq:
     M: MS
     Q: 3MS
-
 model:
   transformer:
     d_model: 64
     nhead: 4
     num_layers: 4
     dropout: 0.1
-    d_freq: null       # default: computed via log2
-    d_var: null        # default: computed via log2
+    d_freq: null
+    d_var: null
     dim_feedforward: 128
-    activation: "relu"
+    activation: relu
     use_nonlinearity: true
     use_attention: true
     use_positional_encoding: true
     calendar_pe: false
-
   ar:
     max_lag: 40
   midas:
     lags:
-      - 1
-      - 2
-      - 3
-      - 4
-      # - 5
-      # - 6
+    - 1
+    - 2
+    - 3
+    - 4
     ar_lags: 1
     use_y_lags: false
-
-
 evaluation:
   forecast_files:
-    - ar_preds
-    - midas_preds
-    - transformer_preds
+  - ar_preds
+  - midas_preds
+  - transformer_preds
   true_col: target
   pred_col: predicted
-  experiment: 'GDPC1_2025-09-26'  # populate with inspection runs for src/evaluation/inspect_model.py
+  experiment: GDPC1_2026-06-12_lead2
   attention_aggregation:
-    include_ablations: true  # set to true to also analyze matching ablation folders
+    include_ablations: true
     output_name: attention_summary.json
-    device: null  # override device string, defaults to cuda if available
+    device: null
     experiments:
-      - IMPGSC1_2025-09-26
-      - EXPGSC1_2025-09-26
-      - FPIx_2025-09-26
-      - CPILFESL_2025-09-26
-      - CPIAUCSL_2025-09-26
-      - PCEPILFE_2025-09-26
-      - PCECTPI_2025-09-26
-      - UNRATE_2025-09-26
-      - OUTNFB_2025-09-26
-      - DPIC96_2025-09-26
-      - PCECC96_2025-09-26
-      - GPDIC1_2025-09-26
-      - GDPC1_2025-09-26
-
+    - GDPC1_2026-06-12_lead2
+    - GPDIC1_2026-06-12_lead2
+    - PCECC96_2026-06-12_lead2
+    - DPIC96_2026-06-12_lead2
+    - OUTNFB_2026-06-12_lead2
+    - UNRATE_2026-06-12_lead2
+    - PCECTPI_2026-06-12_lead2
+    - PCEPILFE_2026-06-12_lead2
+    - CPIAUCSL_2026-06-12_lead2
+    - CPILFESL_2026-06-12_lead2
+    - FPIx_2026-06-12_lead2
+    - EXPGSC1_2026-06-12_lead2
+    - IMPGSC1_2026-06-12_lead2
+hyperopt:
+  study_name: null
+  n_trials: 500
+  d_model:
+  - 128
+  - 256
+  - 512
+  - 192
+  - 384
+  - 1024
+  nhead:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  num_layers:
+  - 1
+  - 2
+  - 3
+  dropout:
+  - 0.0
+  - 0.05
+  - 0.1
+  - 0.15
+  lr:
+  - 1e-5
+  - 3e-5
+  - 1e-4
+  - 3e-4
+  - 5e-4
+  dim_feedforward:
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  - 512
+  - 1024
+  activation:
+  - relu
+  - gelu
+simulation:
+  simulate: false
 retraining:
   ablation:
-    base_dates: {}  # mapping target -> YYYY-MM-DD used for base empirical experiments
-  
-
-
-hyperopt:
-  study_name: null  # optional name for the Optuna study
-  n_trials: 100
-  d_model: [16, 32, 64, 128, 256, 512, 24, 48, 96, 192, 384]
-  nhead: [1, 2, 4, 8]
-  num_layers: [1, 2, 3, 4]
-  dropout: [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-  lr: [1e-5, 3e-5, 1e-4, 3e-4, 5e-4, 1e-3]
-  d_freq: [2, 4, 8, 16, 32, 128]
-  d_var: [4, 8, 16, 32, 64, 128]
-  dim_feedforward: [32, 64, 128, 256, 512, 1024, 2048, 4096]
-  activation: ["relu", "gelu"]
-  
-
-
-
-# ← make sure there’s a blank line at the end
+    base_dates:
+      GDPC1: 2026-06-12_lead2
+      GPDIC1: 2026-06-12_lead2
+      PCECC96: 2026-06-12_lead2
+      DPIC96: 2026-06-12_lead2
+      OUTNFB: 2026-06-12_lead2
+      UNRATE: 2026-06-12_lead2
+      PCECTPI: 2026-06-12_lead2
+      PCEPILFE: 2026-06-12_lead2
+      CPIAUCSL: 2026-06-12_lead2
+      CPILFESL: 2026-06-12_lead2
+      FPIx: 2026-06-12_lead2
+      EXPGSC1: 2026-06-12_lead2
+      IMPGSC1: 2026-06-12_lead2

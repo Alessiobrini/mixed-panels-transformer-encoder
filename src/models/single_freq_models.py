@@ -607,10 +607,20 @@ def run_concatenated_umidas_baseline(
 # Original __main__ for FRED experiments (unchanged behavior)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    with open(project_root / "src" / "config" / "cfg.yaml", "r") as f:
+    import argparse
+    _p = argparse.ArgumentParser()
+    _p.add_argument("--config", default=None, help="Path to config YAML")
+    _p.add_argument("--experiment-date", default="2025-07-24",
+                    help="Date/tag suffix of the {target}_{date} experiment folders to write into")
+    _p.add_argument("--targets", default=None,
+                    help="Comma-separated targets (default: config features.quarterly_vars)")
+    _a, _ = _p.parse_known_args()
+
+    _cfg_path = Path(_a.config) if _a.config else project_root / "src" / "config" / "cfg.yaml"
+    with open(_cfg_path, "r") as f:
         config = yaml.safe_load(f)
 
-    EXPERIMENT_DATE = "2025-07-24"
+    EXPERIMENT_DATE = _a.experiment_date
     N_LAGS = 4
     OPTIMIZE = True
     VAL_RATIO = 0.1
@@ -621,6 +631,7 @@ if __name__ == "__main__":
     quarterly_vars = config["features"]["quarterly_vars"]
     monthly_vars = config["features"]["monthly_vars"]
     train_ratio = config["data"]["train_ratio"]
+    loop_targets = _a.targets.split(",") if _a.targets else quarterly_vars
 
     qd = pd.read_csv(quarterly_path, parse_dates=["date"]).sort_values("date")
     md = pd.read_csv(monthly_path, parse_dates=["date"]).sort_values("date")
@@ -632,7 +643,7 @@ if __name__ == "__main__":
     md_q = md_q.drop(columns=list(overlap))
     data = pd.merge(qd, md_q, on="date", how="inner").set_index("date")
 
-    for target in quarterly_vars:
+    for target in loop_targets:
         print(f"\n--- Processing target: {target} ---")
         target_dir = experiment_dir / f"{target}_{EXPERIMENT_DATE}"
         target_dir.mkdir(parents=True, exist_ok=True)
