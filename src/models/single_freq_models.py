@@ -643,6 +643,14 @@ if __name__ == "__main__":
     md_q = md_q.drop(columns=list(overlap))
     data = pd.merge(qd, md_q, on="date", how="inner").set_index("date")
 
+    # Restrict to the config's variable lists. The raw FRED files may carry extra columns whose
+    # missing early history would otherwise make run_single_freq_baselines' global dropna()
+    # truncate the sample (a column outside the config vars, late first-valid -> all rows dropped
+    # before its start). Keeping only the configured quarterly+monthly vars (in the merged column
+    # order) reproduces the published 1959-2025 sample. AR/MIDAS are unaffected (long-format).
+    cfg_vars = set(quarterly_vars) | set(monthly_vars)
+    data = data[[c for c in data.columns if c in cfg_vars]]
+
     for target in loop_targets:
         print(f"\n--- Processing target: {target} ---")
         target_dir = experiment_dir / f"{target}_{EXPERIMENT_DATE}"
