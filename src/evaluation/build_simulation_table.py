@@ -126,6 +126,12 @@ def load_folder_metrics(folder: Path) -> dict:
     for k in keys[1:]:
         merged = merged.join(pred_dfs[k].drop(columns="true", errors="ignore"), how="inner")
 
+    # Drop rows with NaN (a diverged training run can emit NaN preds); skip the folder entirely
+    # if nothing valid remains, so one bad replication seed cannot break the aggregation.
+    merged = merged.dropna(subset=["true"] + keys)
+    if len(merged) == 0:
+        return {}
+
     y_true = merged["true"].values
     return {model: compute_errors(y_true, merged[model].values) for model in keys}
 
