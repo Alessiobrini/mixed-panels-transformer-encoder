@@ -66,6 +66,24 @@ def collect(manifest: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def drop_diverged(long_df: pd.DataFrame, max_rmse: float) -> pd.DataFrame:
+    """Drop entire (regime, seed) replications whose path is pathological -- any model's RMSE
+    exceeds max_rmse. On rare seeds the simulated path is (near-)explosive, so EVERY model
+    (incl. the deterministic AR) blows up; those are bad DGP draws, not model failures, and
+    excluding the whole seed keeps the per-seed comparison balanced."""
+    rmse = long_df[long_df["metric"] == "RMSE"]
+    bad = set(map(tuple, rmse[rmse["value"] > max_rmse][["regime", "sim_seed"]]
+                  .drop_duplicates().values))
+    if bad:
+        print(f"Dropping {len(bad)} diverged (regime, seed) replications (RMSE > {max_rmse}, "
+              f"pathological/explosive paths):")
+        for reg, seed in sorted(bad):
+            print(f"  {reg} seed {seed}")
+        key = list(zip(long_df["regime"], long_df["sim_seed"]))
+        long_df = long_df[[k not in bad for k in key]].copy()
+    return long_df
+
+
 def summarize(long_df: pd.DataFrame) -> pd.DataFrame:
     g = long_df.groupby(["regime", "model", "metric"])["value"]
     out = g.agg(["mean", "std", "count"]).reset_index()
@@ -120,6 +138,8 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--manifest", required=True, help="path to the *_manifest.csv from the driver")
     p.add_argument("--out-prefix", default=None, help="output basename (default: manifest stem)")
+    p.add_argument("--max-rmse", type=float, default=10.0,
+                   help="drop (regime, seed) replications whose path explodes above this RMSE")
     args = p.parse_args()
 
     manifest = Path(args.manifest)
@@ -128,6 +148,7 @@ def main() -> None:
         print("No metrics collected — check the manifest folders.")
         return
 
+    long_df = drop_diverged(long_df, args.max_rmse)
     summary = summarize(long_df)
     out_dir = manifest.parent.parent / "tables"
     out_dir.mkdir(exist_ok=True)
