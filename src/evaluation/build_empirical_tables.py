@@ -47,10 +47,17 @@ PAPER_LOSE = ["DPIC96", "EXPGSC1", "FPIx", "CPILFESL", "IMPGSC1"]
 
 COMPETING = [("MPTE", "transformer"), ("AR", "ar"), ("MIDAS", "midas"),
              ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")]
-# ablation folder suffix -> display label (B5->AB4, B6->AB5, matching the paper)
+# ablation display label -> folder suffix (B5->AB4, B6->AB5, matching the paper). Used by
+# load_target_frame to FIND the ablation folders; the merged columns are keyed by the display
+# label, so make_table must use ABLATION_ROWS (label -> column key) instead, not these suffixes.
 ABLATION_SCEN = [("MPTE", None), ("AB1", "B1_no_nonlinearity"), ("AB2", "B2_no_attention"),
                  ("AB3", "B3_no_attention_no_nonlinearity"),
                  ("AB4", "B5_no_positional_encoding"), ("AB5", "B6_y_only")]
+# (display_label, merged-column key) for the ablation table rows. MPTE's preds live under the
+# "transformer" column; each ablation's preds are merged under its display label (see
+# load_target_frame), so the key equals the label here -- NOT the folder suffix above.
+ABLATION_ROWS = [("MPTE", "transformer"), ("AB1", "AB1"), ("AB2", "AB2"), ("AB3", "AB3"),
+                 ("AB4", "AB4"), ("AB5", "AB5")]
 
 PRED_FILES = {"transformer": "transformer_preds", "ar": "ar_preds", "midas": "midas_preds",
               "ols": "ols_preds", "xgb": "xgb_preds", "nn": "nn_preds"}
@@ -325,8 +332,8 @@ def main():
     writes = {
         "empirical1.tex": make_table(comp, win, COMPETING, cap1, "Tab:empirical1"),
         "empirical2.tex": make_table(comp, lose, COMPETING, cap2, "Tab:empirical2"),
-        "empirical_abl1.tex": make_table(abl, win, ABLATION_SCEN, cap_a1, "Tab:empirical_abl1"),
-        "empirical_abl2.tex": make_table(abl, lose, ABLATION_SCEN, cap_a2, "Tab:empirical_abl2"),
+        "empirical_abl1.tex": make_table(abl, win, ABLATION_ROWS, cap_a1, "Tab:empirical_abl1"),
+        "empirical_abl2.tex": make_table(abl, lose, ABLATION_ROWS, cap_a2, "Tab:empirical_abl2"),
     }
     for name, tex in writes.items():
         (outdir / name).write_text(tex + "\n")
