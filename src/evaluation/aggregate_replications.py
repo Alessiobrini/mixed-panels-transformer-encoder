@@ -156,23 +156,35 @@ def make_latex(summary: pd.DataFrame) -> str:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--manifest", required=True, help="path to the *_manifest.csv from the driver")
+    p.add_argument("--manifest", default=None, help="path to the *_manifest.csv from the driver")
+    p.add_argument("--from-long", default=None,
+                   help="path to a saved *_replications_long.csv (the post-collect metrics). "
+                        "Rebuilds Table 1 from the committed replication bundle without needing "
+                        "the raw per-replication folders. Mutually exclusive with --manifest.")
     p.add_argument("--out-prefix", default=None, help="output basename (default: manifest stem)")
+    p.add_argument("--outdir", default=None, help="output directory (default: <manifest>/../tables)")
     p.add_argument("--max-rmse", type=float, default=10.0,
                    help="drop (regime, seed) replications whose path explodes above this RMSE")
     args = p.parse_args()
+    if not (args.manifest or args.from_long):
+        p.error("provide --manifest or --from-long")
 
-    manifest = Path(args.manifest)
-    long_df = collect(manifest)
+    if args.from_long:
+        long_df = pd.read_csv(args.from_long)
+        stem = args.out_prefix or Path(args.from_long).stem.replace("_replications_long", "")
+        out_dir = Path(args.outdir) if args.outdir else Path(args.from_long).parent
+    else:
+        manifest = Path(args.manifest)
+        long_df = collect(manifest)
+        stem = args.out_prefix or manifest.stem.replace("_manifest", "")
+        out_dir = Path(args.outdir) if args.outdir else manifest.parent.parent / "tables"
     if long_df.empty:
         print("No metrics collected — check the manifest folders.")
         return
 
     long_df = drop_diverged(long_df, args.max_rmse)
     summary = summarize(long_df)
-    out_dir = manifest.parent.parent / "tables"
-    out_dir.mkdir(exist_ok=True)
-    stem = args.out_prefix or manifest.stem.replace("_manifest", "")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     long_path = out_dir / f"{stem}_replications_long.csv"
     summ_path = out_dir / f"{stem}_replications_summary.csv"

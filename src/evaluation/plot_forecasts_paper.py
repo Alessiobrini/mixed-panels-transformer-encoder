@@ -91,7 +91,13 @@ def main():
     ap.add_argument("--reference-outdir", default=None,
                     help="optional second copy for the reference comparison PDF")
     ap.add_argument("--no-usetex", action="store_true", help="disable LaTeX text rendering")
+    ap.add_argument("--data-dir", default=None,
+                    help="prediction-folder directory (default: outputs/experiments). Point at "
+                         "replication/data/experiments to rebuild from the replication bundle.")
     args = ap.parse_args()
+    if args.data_dir:
+        global EXPERIMENT_DIR
+        EXPERIMENT_DIR = Path(args.data_dir).resolve()
 
     if not args.no_usetex:
         mpl.rcParams["text.usetex"] = True

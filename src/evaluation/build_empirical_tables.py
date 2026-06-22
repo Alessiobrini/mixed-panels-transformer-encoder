@@ -261,7 +261,7 @@ def _dm_stat(dm_df, base, other):
 def make_dm_table(date, targets, model_specs, include_abl, caption, label):
     from src.evaluation.evaluate_forecasts import run_dm_tests
     header = " & ".join(["Target"] + [lab for lab, _ in model_specs])
-    L = ["% Auto-generated DM table", "\\begin{table}[htbp]", "\\centering",
+    L = ["% Auto-generated DM table", "\\begin{table}[h!]", "\\centering",
          "\\begin{tabular}{@{}l" + "c" * len(model_specs) + "@{}}", "\\toprule",
          header + " \\\\", "\\midrule"]
     for t in targets:
@@ -306,7 +306,7 @@ def make_mcs_table(date, targets, col_specs, include_abl, caption, label, exclud
                 included = set()
         rows.append([t] + ["\\checkmark" if lab in included else "--" for lab, _ in col_specs])
     header = " & ".join(["target"] + [lab for lab, _ in col_specs])
-    L = ["% Auto-generated MCS table", "\\begin{table}[htbp]", "\\centering",
+    L = ["% Auto-generated MCS table", "\\begin{table}[h!]", "\\centering",
          "\\begin{tabular}{l" + "c" * len(col_specs) + "}", "\\toprule", header + " \\\\",
          "\\midrule"]
     for r in rows:
@@ -324,7 +324,14 @@ def main():
     ap.add_argument("--regroup", action="store_true",
                     help="recompute the win/lose grouping from the data instead of using the "
                          "paper's fixed grouping (default: keep the paper grouping)")
+    ap.add_argument("--data-dir", default=None,
+                    help="directory holding the per-target prediction folders (default: "
+                         "outputs/experiments). Point at replication/data/experiments to "
+                         "rebuild the tables from the committed replication bundle.")
     args = ap.parse_args()
+    if args.data_dir:
+        global EXPERIMENT_DIR
+        EXPERIMENT_DIR = Path(args.data_dir).resolve()
 
     date = args.experiment_date
     targets = args.targets.split(",") if args.targets else TARGETS
