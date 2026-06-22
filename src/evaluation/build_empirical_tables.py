@@ -38,12 +38,13 @@ if str(REPO) not in sys.path:
 TARGETS = ["GDPC1", "GPDIC1", "PCECC96", "DPIC96", "OUTNFB", "UNRATE",
            "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL", "FPIx", "EXPGSC1", "IMPGSC1"]
 
-# Paper's exact target grouping (Tab:empirical1/2 and the ablation tables share it). The
-# revision reproduces the SAME tables with lead=2, so we keep this grouping rather than
-# recomputing it (use --regroup to recompute from the data instead). Note the paper shows
-# only 10 of the 13 targets in the main competing tables.
-PAPER_WIN = ["OUTNFB", "PCECTPI", "PCEPILFE", "CPIAUCSL", "GDPC1"]
-PAPER_LOSE = ["DPIC96", "EXPGSC1", "FPIx", "CPILFESL", "IMPGSC1"]
+# Target grouping for Tab:empirical1/2 and the ablation tables (shared). The revision now
+# shows ALL 13 targets, split by whether MPTE attains the lowest full-sample RMSE against the
+# competing models (data-driven grouping; matches `--regroup`, TARGETS order within each group).
+# WIN: GPDIC1 added; CPILFESL moved in (lead=2 helps it). LOSE: GDPC1 moved in (MIDAS edges it
+# under lead=2), PCECC96 and UNRATE added (MIDAS most accurate; for UNRATE only MIDAS does well).
+PAPER_WIN = ["GPDIC1", "OUTNFB", "PCECTPI", "PCEPILFE", "CPIAUCSL", "CPILFESL"]
+PAPER_LOSE = ["GDPC1", "PCECC96", "DPIC96", "UNRATE", "FPIx", "EXPGSC1", "IMPGSC1"]
 
 COMPETING = [("MPTE", "transformer"), ("AR", "ar"), ("MIDAS", "midas"),
              ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")]

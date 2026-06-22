@@ -143,9 +143,11 @@ def make_latex(summary: pd.DataFrame) -> str:
     L += ["\\bottomrule", "\\end{tabular}",
           "\\caption{Forecasting accuracy for the first low-frequency target series $Y_1$ across "
           "linear, mildly nonlinear, and highly nonlinear simulation designs. Each design includes "
-          "30 high-frequency regressors and 5 low-frequency targets, with $Y_1$ predicted using the "
-          "remaining regressors. Results are reported for MPTE, AR, MIDAS, and ablation variants of "
-          f"MPTE. Each entry is the average over {n} Monte Carlo replications (random seeds), with "
+          "30 high-frequency regressors and 5 low-frequency targets, with $Y_1$ predicted from its "
+          "own lagged values together with the remaining low- and high-frequency regressors. Results "
+          "are reported for MPTE, AR, MIDAS, and ablation variants of "
+          f"MPTE. Each entry is the average over {n} replications of the data-generating process, "
+          "each generated with a different random seed, with "
           "the standard deviation across those replications reported in parentheses below. "
           "Dark green indicates the best-performing method and light green the second-best "
           "within each column.}", "\\label{Tab:evals_simulation}", "\\end{table}"]
