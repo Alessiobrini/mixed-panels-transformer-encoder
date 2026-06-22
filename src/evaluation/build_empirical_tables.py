@@ -369,7 +369,7 @@ def main():
         for me in METRICS:
             for t in comp:
                 vals = {lab: comp[t][k][p][me] for lab, k in COMPETING
-                        if k in comp[t] and lab != "AR"}  # exclude AR, as in the paper summary
+                        if k in comp[t]}  # all six competing models (AR included)
                 vals = {k: v for k, v in vals.items() if not np.isnan(v)}
                 if not vals:
                     continue
@@ -387,8 +387,10 @@ def main():
         L.append(f"{m} & " + " & ".join(cells) + " \\\\")
     L += ["\\bottomrule", "\\end{tabular}",
           "\\caption{Number of target series for which each model achieves the best forecasting "
-          "performance relative to competitors, for RMSE, MAE, and DA over the full evaluation "
-          "period and the pre- and post-COVID subsamples.}", "\\label{Tab:empirical3}",
+          "performance, for RMSE, MAE, and DA over the full evaluation period and the pre- and "
+          "post-COVID subsamples. Counts are computed across all six competing models (MPTE, AR, "
+          "MIDAS, OLS, XGB, and NN); models with no best finishes (here NN) are omitted.}",
+          "\\label{Tab:empirical3}",
           "\\end{table}"]
     (outdir / "empirical3.tex").write_text("\n".join(L) + "\n")
     print(f"wrote {outdir / 'empirical3.tex'}")
