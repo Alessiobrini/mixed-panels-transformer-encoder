@@ -84,9 +84,19 @@ def _load_pred(path: Path, model: str) -> pd.DataFrame:
     return df[["date", "true", model]].set_index("date")
 
 
-def load_target_frame(date: str, target: str, include_ablations: bool) -> pd.DataFrame | None:
-    """Merge all model preds for a target on common dates. Returns df indexed by date with
-    a 'true' column and one column per model key present."""
+def load_target_frame(date: str, target: str, include_ablations: bool,
+                      anchor_mpte: bool = False) -> pd.DataFrame | None:
+    """Merge all model preds for a target. Returns df indexed by date with a 'true' column
+    and one column per model key present.
+
+    anchor_mpte=False (default): inner-join on the common dates of every model (used by the
+    DM/MCS builders, which require a complete, NaN-free matrix).
+    anchor_mpte=True: the evaluation window is the competing-model inner join (exactly the
+    window the competing tables already use); the ablation columns are then LEFT-joined onto it,
+    keeping NaNs for any ablation that lacks a date. This leaves the competing tables byte
+    identical and scores MPTE and AB1-AB4 on that same window, so MPTE matches across tables;
+    only the quarterly-only AB5, which under the high-frequency lead emits one fewer forecast
+    quarter, is scored on its own (one quarter shorter) window. Used by metrics_table."""
     folder = EXPERIMENT_DIR / f"{target}_{date}"
     if not folder.is_dir():
         return None
@@ -105,11 +115,22 @@ def load_target_frame(date: str, target: str, include_ablations: bool) -> pd.Dat
                 frames[label] = _load_pred(f, label)
     if "transformer" not in frames:
         return None
-    merged = frames["transformer"].copy()
-    for k, fr in frames.items():
-        if k == "transformer":
-            continue
-        merged = merged.join(fr.drop(columns="true"), how="inner")
+    if anchor_mpte:
+        # window = competing inner join (identical to the competing tables); ablation columns
+        # are left-joined onto it so AB5's shorter coverage cannot shrink the shared window.
+        merged = frames["transformer"].copy()
+        for k in [c for c in frames if c in PRED_FILES and c != "transformer"]:
+            merged = merged.join(frames[k].drop(columns="true"), how="inner")
+        for k, fr in frames.items():
+            if k in PRED_FILES:
+                continue
+            merged = merged.join(fr.drop(columns="true"), how="left")
+    else:
+        merged = frames["transformer"].copy()
+        for k, fr in frames.items():
+            if k == "transformer":
+                continue
+            merged = merged.join(fr.drop(columns="true"), how="inner")
     return merged
 
 
@@ -117,7 +138,7 @@ def metrics_table(date: str, targets, include_ablations: bool) -> dict:
     """Return {target: {model: {period: {metric: val}}}}."""
     out = {}
     for t in targets:
-        merged = load_target_frame(date, t, include_ablations)
+        merged = load_target_frame(date, t, include_ablations, anchor_mpte=True)
         if merged is None:
             continue
         idx = merged.index
@@ -129,8 +150,10 @@ def metrics_table(date: str, targets, include_ablations: bool) -> dict:
         for m in models:
             out[t][m] = {}
             for p, mask in masks.items():
-                yt = merged.loc[mask, "true"].to_numpy()
-                yp = merged.loc[mask, m].to_numpy()
+                sub = merged.loc[mask]
+                valid = sub[m].notna() & sub["true"].notna()
+                yt = sub.loc[valid, "true"].to_numpy()
+                yp = sub.loc[valid, m].to_numpy()
                 out[t][m][p] = compute_errors(yt, yp) if len(yt) > 1 else {k: np.nan for k in METRICS}
     return out
 
