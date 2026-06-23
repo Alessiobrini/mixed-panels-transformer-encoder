@@ -98,7 +98,7 @@ def plot_heatmap(mat, outfile, xlabels=None, ylabels=None, mask_upper_triangle=F
         fig.colorbar(heatmap, ax=ax)
     plt.tight_layout()
     outfile.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(outfile, dpi=200)
+    plt.savefig(outfile, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
 
