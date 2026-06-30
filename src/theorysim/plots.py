@@ -1,0 +1,181 @@
+# theorysim (JBES theory-validation add-on) -- report figure generators.
+# Isolated; never edits the empirical pipeline. See src/theorysim/README.md.
+"""Figures for the theory-validation report. Each function reads a results CSV and writes
+a PDF sized to the document text width (golden ratio) via src.utils.plotting.set_size."""
+
+from __future__ import annotations
+
+import csv
+import collections
+from pathlib import Path
+
+import numpy as np
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from src.utils.plotting import set_size
+
+TEXTWIDTH_PT = 469.0  # standalone article \textwidth
+plt.rcParams.update({"font.family": "serif", "font.size": 9,
+                     "axes.grid": True, "grid.alpha": 0.3})
+
+
+def _read(path):
+    with open(path) as f:
+        return list(csv.DictReader(f))
+
+
+def _slope(x, y):
+    lx, ly = np.log(np.asarray(x)), np.log(np.asarray(y))
+    A = np.vstack([lx, np.ones_like(lx)]).T
+    m, b = np.linalg.lstsq(A, ly, rcond=None)[0]
+    return float(m), float(b)
+
+
+def plot_e1_rate(csv_by_arm, out):
+    """log(mean e_C) vs log(alpha_bar), one series per arm, with fitted slopes."""
+    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.7))
+    for arm, path in csv_by_arm.items():
+        if not Path(path).exists():
+            continue
+        rows = _read(path)
+        cells = collections.defaultdict(list)
+        ab = {}
+        for r in rows:
+            key = (r["T"], r["N"])
+            cells[key].append(float(r["e_C"]))
+            ab[key] = float(r["alpha_bar"])
+        xs = [ab[k] for k in cells]
+        ys = [np.mean(v) for v in cells.values()]
+        order = np.argsort(xs)
+        xs, ys = np.array(xs)[order], np.array(ys)[order]
+        m, b = _slope(xs, ys)
+        ax.loglog(xs, ys, "o", label=f"{arm} (slope {m:.2f})")
+        ax.loglog(xs, np.exp(b) * xs ** m, "-", lw=1, alpha=0.7)
+    ax.set_xlabel(r"theoretical rate $\bar\alpha$")
+    ax.set_ylabel(r"mean common-component error $e_C$")
+    ax.set_title("E1: consistency (slope $\\approx$ 1 validates Theorem 1)")
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+ARM_LABEL = {
+    "oracle": r"oracle ($A_z{=}I$)",
+    "parameter_free": r"parameter-free ($Q{=}K{=}Z$)",
+    "independent_lag": "learned, frozen (lagged target)",
+    "independent": "learned, frozen (masked target)",
+}
+
+
+def _e1_rows(csv_paths, arms):
+    rows = []
+    for p in csv_paths:
+        if Path(p).exists():
+            rows += _read(p)
+    out = {}
+    for a in arms:
+        sub = [r for r in rows if r["arm"] == a]
+        if not sub:
+            continue
+        sub.sort(key=lambda r: float(r["N"]))
+        out[a] = sub
+    return out
+
+
+def plot_e1_relative(csv_paths, out, arms=("oracle", "parameter_free", "independent_lag")):
+    """Two panels: (a) relative e_C vs N (log-log, slope ~ -1 validates Theorem 1 for every
+    arm); (b) operator op-norm vs N (grows for the data-driven arms, yet the rate in (a) is
+    unaffected -- the A.7 note)."""
+    data = _e1_rows(csv_paths, arms)
+    fig, axes = plt.subplots(1, 2, figsize=set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2)))
+    axa, axb = axes
+    for a, sub in data.items():
+        N = np.array([float(r["N"]) for r in sub])
+        rel = np.array([float(r["e_C_rel"]) for r in sub])
+        op = np.array([float(r["op_norm"]) for r in sub])
+        m, b = _slope(N, rel)
+        lbl = ARM_LABEL.get(a, a)
+        axa.loglog(N, rel, "o-", lw=1, label=f"{lbl} (slope {m:.2f})")
+        axb.semilogx(N, op, "o-", lw=1, label=lbl)
+    # reference slope -1 guide on panel (a)
+    Nref = np.array([float(r["N"]) for r in next(iter(data.values()))])
+    y0 = max(float(r["e_C_rel"]) for r in next(iter(data.values())))
+    axa.loglog(Nref, y0 * Nref[0] / Nref, "k--", lw=0.8, alpha=0.6, label="slope $-1$")
+    axa.set_xlabel(r"cross-section / sample size $N=T$")
+    axa.set_ylabel(r"relative error $\|\widehat C-C\|_F^2/\|C\|_F^2$")
+    axa.set_title("(a) consistency: every arm $\\to 0$ at rate $\\approx 1$", fontsize=9)
+    axa.legend(frameon=False, fontsize=7, loc="lower left")
+    axb.axhline(1.0, color="k", lw=0.8, ls=":", alpha=0.6)
+    axb.set_xlabel(r"cross-section size $N$")
+    axb.set_ylabel(r"$\|A_z\|_{\mathrm{op}}$")
+    axb.set_title("(b) operator op-norm grows, yet (a) holds", fontsize=9)
+    axb.legend(frameon=False, fontsize=7, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_e2_qq(qq_csv, out):
+    """QQ plot of the studentized statistic vs N(0,1)."""
+    from scipy import stats
+    z = np.array([float(r["z"]) for r in _read(qq_csv)])
+    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.55))
+    stats.probplot(z, dist="norm", plot=ax)
+    ax.get_lines()[0].set_markersize(2)
+    ax.set_title("E2: QQ of studentized $C_{y,i,t}$ (mixed regime)")
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_e3_efficiency(e3_csv, out):
+    rows = _read(e3_csv)
+    nx = [float(r["N_x"]) for r in rows]
+    ratio = [float(r["ratio_yonly_over_joint"]) for r in rows]
+    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.6))
+    ax.plot(nx, ratio, "o-")
+    ax.axhline(1.0, color="k", lw=0.8, ls="--", alpha=0.6)
+    ax.set_xlabel(r"auxiliary size $N_x$")
+    ax.set_ylabel("MSE ratio (Y-only / joint)")
+    ax.set_title("E3: transfer-learning efficiency gain")
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_e4_cca(e4_csv, out):
+    rows = _read(e4_csv)
+    vals = {r["metric"]: float(r["value"]) for r in rows}
+    nl = [vals[k] for k in sorted(vals) if k.startswith("cca_nl_") and "_ys_" not in k]
+    lin = [vals[k] for k in sorted(vals) if k.startswith("cca_lin_") and "_ys_" not in k]
+    idx = np.arange(len(nl))
+    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.6))
+    ax.bar(idx - 0.2, nl, width=0.4, label="nonlinear latent")
+    ax.bar(idx + 0.2, lin, width=0.4, label="linear PCA")
+    ax.set_xticks(idx)
+    ax.set_xticklabels([f"cc{i+1}" for i in idx])
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel(r"canonical correlation vs $F^{(B)}$")
+    ax.set_title("E4: factor-space recovery on linear truth")
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_operator_heatmaps(Az_npy, B_npy, out):
+    A_z = np.load(Az_npy)
+    B = np.load(B_npy)
+    fig, axes = plt.subplots(1, 2, figsize=set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2)))
+    for ax, M, title in zip(axes, (A_z, B), (r"$A_z$ (cross-sectional)", r"$B$ (temporal)")):
+        im = ax.imshow(M, cmap="coolwarm", aspect="auto")
+        ax.set_title(title, fontsize=9)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.suptitle("Learned, frozen operators (independent-sample AB1)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)

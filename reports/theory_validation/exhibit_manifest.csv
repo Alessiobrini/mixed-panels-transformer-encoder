@@ -1,0 +1,6 @@
+exhibit,script,command
+E1 rate figure + slope table (relative metric),src/theorysim/rerun_e1_relative.py,python -m src.theorysim.rerun_e1_relative --arms oracle parameter_free --out outputs/theorysim/e1/relative_rerun.csv ; --arms independent_lag --out outputs/theorysim/e1/relative_rerun_lag.csv
+E2 coverage table + QQ,src/theorysim/exp_e2_coverage.py,python -m src.theorysim.exp_e2_coverage --reps 2000
+E3 efficiency figure + table,src/theorysim/exp_e3_efficiency.py,python -m src.theorysim.exp_e3_efficiency --reps 200
+E4 CCA figure,src/theorysim/exp_e4_bridge.py,python -m src.theorysim.exp_e4_bridge --N 300 --T 300 --n-oos 50 --epochs 1200
+Figures + tables + heatmaps,src/theorysim/make_report_assets.py,python -m src.theorysim.make_report_assets

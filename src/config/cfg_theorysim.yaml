@@ -1,0 +1,42 @@
+# theorysim (JBES theory-validation add-on) -- configuration.
+# Isolated config for the theory-validation simulation; the empirical cfg.yaml /
+# cfg_equity.yaml are not touched. Loaded by src/utils/config.Config.
+
+dgp:
+  N_x: 100          # auxiliary (X) block size
+  N_y: 50           # target (Y) block size
+  T: 200            # time dimension
+  k_ys: 2           # number of Y-strong factors
+  k_R: 2            # number of remaining (X-only) factors
+  sigma2: 2.0       # idiosyncratic noise variance (~50% common variance)
+  phi: 0.5          # factor AR(1) coefficient
+  innov_var: 0.75   # factor innovation variance (unconditional var = 1)
+  burn_in: 500
+  variant: baseline # baseline | weak_leakage
+
+grid:
+  T_values: [50, 100, 200, 400]
+  N_values: [50, 100, 200, 400]
+
+operators:
+  d_model: 16       # attention projection width
+  nhead: 1
+  num_layers: 1
+  k: 4              # k = k_ys + k_R; also the E4 latent read-out width
+  epochs: 200
+  lr: 0.001
+  arm: independent  # oracle | independent | same_sample
+
+experiments:
+  e1_reps: 500
+  e2_reps: 2000
+  e3_reps: 500
+  e4_reps: 200
+  e2_regimes:       # (N, T) per regime
+    F_dominant: {N: 50, T: 400}
+    Lambda_dominant: {N: 400, T: 50}
+    mixed: {N: 200, T: 200}
+
+paths:
+  outputs_root: outputs/theorysim
+  report_dir: reports/theory_validation
