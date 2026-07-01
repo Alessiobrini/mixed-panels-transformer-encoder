@@ -350,3 +350,22 @@ question worth raising. Newest stage at the bottom. Branch: `theory-validation-s
     nonlinear recovers target-relevant direction, linear recovers full space.
 - Visual QA: compiled, 0 overfull boxes, 5 pages; E1/E2/E3/E4/operators/appendix all rasterized
   and inspected. Report is the corrected, faithful, full-scale deliverable.
+
+## Stage 17 — Report review round (factor/loading panels, cleanup, paper-repo share)
+- **E1 completed to factors + loadings (user request):** added alignment.factor_error_relative
+  and loading_error_relative; run_cell and rerun_e1_relative now record e_F_rel, e_L_rel. E1
+  figure is a 2x2 (a) common component C, (b) factors F, (c) loadings Lambda, (d) op-norm; table
+  reports the slope of C, F, Lambda per arm + op-norm at N_max. Rerun to N=1000: all slopes ~ -1
+  (F/L noisier than C, which needs no alignment, hence C stays the headline). oracle C/F/L =
+  -1.02/-1.00/-1.10.
+- **Report polish:** model note rewritten to be digestible (one attention = one axis -> axial =
+  two attentions; value map W^v=I keeps Z_tilde a factor model); E1 intro connects the common
+  component to Theorem 1's factor+loading consistency; figures/tables now labelled and
+  cross-referenced; E1 figure legends decluttered (no overlap); removed the "lagged" wording
+  from all prose/labels; dropped the reproducibility appendix (Kate does not run code); operators
+  figure shortened and pinned to its section so it no longer floats past it.
+- **Shared with Kate:** committed a self-contained standalone report into the paper (Overleaf)
+  repo as MPTE_simulation_design_experiments.tex + sim_experiments_assets/{figs,tables} + the
+  compiled PDF (figure PDFs force-added past the *.pdf ignore, matching how the repo tracks its
+  own figures). Pushed to origin/main.
+- 23 tests still pass; report compiles 0 overfull, 0 undefined refs, 6 pages.

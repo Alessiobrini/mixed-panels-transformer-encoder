@@ -66,8 +66,8 @@ def plot_e1_rate(csv_by_arm, out):
 ARM_LABEL = {
     "oracle": r"oracle ($A_z{=}I$)",
     "parameter_free": r"parameter-free ($Q{=}K{=}Z$)",
-    "independent_lag": "learned, frozen (lagged target)",
-    "independent": "learned, frozen (masked target)",
+    "independent_lag": "learned, frozen",
+    "independent": "learned, frozen",
 }
 
 
@@ -87,33 +87,40 @@ def _e1_rows(csv_paths, arms):
 
 
 def plot_e1_relative(csv_paths, out, arms=("oracle", "parameter_free", "independent_lag")):
-    """Two panels: (a) relative e_C vs N (log-log, slope ~ -1 validates Theorem 1 for every
-    arm); (b) operator op-norm vs N (grows for the data-driven arms, yet the rate in (a) is
-    unaffected -- the A.7 note)."""
+    """2x2: relative error vs N (log-log, slope ~ -1) for (a) the common component, (b) factors,
+    (c) loadings, and (d) the operator op-norm (grows for the data-driven arms, yet the rates in
+    (a)-(c) are unaffected -- the A.7 note)."""
     data = _e1_rows(csv_paths, arms)
-    fig, axes = plt.subplots(1, 2, figsize=set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2)))
-    axa, axb = axes
+    ref = next(iter(data.values()))
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(2, 2))
+    fig, axes = plt.subplots(2, 2, figsize=(w, w * 0.82))
+    (axc, axf), (axl, axo) = axes
+
+    conv = [("e_C_rel", axc, r"(a) common component $C$"),
+            ("e_F_rel", axf, r"(b) factors $F$"),
+            ("e_L_rel", axl, r"(c) loadings $\Lambda$")]
+    for key, ax, title in conv:
+        for a, sub in data.items():
+            N = np.array([float(r["N"]) for r in sub])
+            y = np.array([float(r[key]) for r in sub])
+            ax.loglog(N, y, "o-", lw=1, label=ARM_LABEL.get(a, a))
+        Nref = np.array([float(r["N"]) for r in ref])
+        y0 = max(float(r[key]) for r in ref)
+        ax.loglog(Nref, y0 * Nref[0] / Nref, "k--", lw=0.8, alpha=0.6, label="slope $-1$")
+        ax.set_xlabel(r"$N=T$")
+        ax.set_ylabel("relative error")
+        ax.set_title(title, fontsize=9)
+    axc.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="upper right")
+
     for a, sub in data.items():
         N = np.array([float(r["N"]) for r in sub])
-        rel = np.array([float(r["e_C_rel"]) for r in sub])
         op = np.array([float(r["op_norm"]) for r in sub])
-        m, b = _slope(N, rel)
-        lbl = ARM_LABEL.get(a, a)
-        axa.loglog(N, rel, "o-", lw=1, label=f"{lbl} (slope {m:.2f})")
-        axb.semilogx(N, op, "o-", lw=1, label=lbl)
-    # reference slope -1 guide on panel (a)
-    Nref = np.array([float(r["N"]) for r in next(iter(data.values()))])
-    y0 = max(float(r["e_C_rel"]) for r in next(iter(data.values())))
-    axa.loglog(Nref, y0 * Nref[0] / Nref, "k--", lw=0.8, alpha=0.6, label="slope $-1$")
-    axa.set_xlabel(r"cross-section / sample size $N=T$")
-    axa.set_ylabel(r"relative error $\|\widehat C-C\|_F^2/\|C\|_F^2$")
-    axa.set_title("(a) consistency: every arm $\\to 0$ at rate $\\approx 1$", fontsize=9)
-    axa.legend(frameon=False, fontsize=7, loc="lower left")
-    axb.axhline(1.0, color="k", lw=0.8, ls=":", alpha=0.6)
-    axb.set_xlabel(r"cross-section size $N$")
-    axb.set_ylabel(r"$\|A_z\|_{\mathrm{op}}$")
-    axb.set_title("(b) operator op-norm grows, yet (a) holds", fontsize=9)
-    axb.legend(frameon=False, fontsize=7, loc="upper left")
+        axo.semilogx(N, op, "o-", lw=1, label=ARM_LABEL.get(a, a))
+    axo.axhline(1.0, color="k", lw=0.8, ls=":", alpha=0.6)
+    axo.set_xlabel(r"$N$")
+    axo.set_ylabel(r"$\|A_z\|_{\mathrm{op}}$")
+    axo.set_title(r"(d) operator op-norm grows, yet (a)-(c) hold", fontsize=9)
+    axo.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="upper left")
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
@@ -153,7 +160,8 @@ def plot_e4_cca(e4_csv, out):
     nl = [vals[k] for k in sorted(vals) if k.startswith("cca_nl_") and "_ys_" not in k]
     lin = [vals[k] for k in sorted(vals) if k.startswith("cca_lin_") and "_ys_" not in k]
     idx = np.arange(len(nl))
-    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.6))
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0)
+    fig, ax = plt.subplots(figsize=(w, w * 0.42))   # landscape: shorter on the page
     ax.bar(idx - 0.2, nl, width=0.4, label="nonlinear latent")
     ax.bar(idx + 0.2, lin, width=0.4, label="linear PCA")
     ax.set_xticks(idx)
@@ -170,7 +178,8 @@ def plot_e4_cca(e4_csv, out):
 def plot_operator_heatmaps(Az_npy, B_npy, out):
     A_z = np.load(Az_npy)
     B = np.load(B_npy)
-    fig, axes = plt.subplots(1, 2, figsize=set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2)))
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2))
+    fig, axes = plt.subplots(1, 2, figsize=(w, w * 0.30))   # short/wide: fits under its section
     for ax, M, title in zip(axes, (A_z, B), (r"$A_z$ (cross-sectional)", r"$B$ (temporal)")):
         im = ax.imshow(M, cmap="coolwarm", aspect="auto")
         ax.set_title(title, fontsize=9)

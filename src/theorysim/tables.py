@@ -61,36 +61,39 @@ def make_e1_slope_table(csv_by_arm, out):
 ARM_LABEL = {
     "oracle": "oracle ($A_z{=}I$)",
     "parameter_free": "parameter-free ($Q{=}K{=}Z$)",
-    "independent_lag": "learned, frozen (lagged)",
-    "independent": "learned, frozen (masked)",
+    "independent_lag": "learned, frozen",
+    "independent": "learned, frozen",
 }
 
 
 def make_e1_relative_table(csv_paths, out,
                            arms=("oracle", "parameter_free", "independent_lag")):
-    """E1 on the relative metric: per arm, the log-log slope of relative e_C vs N (target -1),
-    plus relative e_C and op-norm at the largest N."""
+    """E1 on the relative metric: per arm, the log-log slope of the relative error vs N (target
+    -1) for the common component, factors, and loadings, plus the op-norm at the largest N."""
     import numpy as np
     rows = []
     for p in csv_paths:
         if Path(p).exists():
             rows += _read(p)
-    lines = ["Operator arm & slope ($e_C^{\\mathrm{rel}}\\!\\sim\\! N$) "
-             "& $e_C^{\\mathrm{rel}}$ at $N_{\\max}$ & $\\|A_z\\|_{\\mathrm{op}}$ at $N_{\\max}$ \\\\\n"
-             "\\midrule\n"]
+
+    def _slope(N, y):
+        A = np.vstack([np.log(N), np.ones_like(N)]).T
+        return float(np.linalg.lstsq(A, np.log(y), rcond=None)[0][0])
+
+    lines = ["Operator arm & slope $C$ & slope $F$ & slope $\\Lambda$ "
+             "& $\\|A_z\\|_{\\mathrm{op}}$ at $N_{\\max}$ \\\\\n\\midrule\n"]
     for a in arms:
         sub = [r for r in rows if r["arm"] == a]
         if not sub:
             continue
         sub.sort(key=lambda r: float(r["N"]))
         N = np.array([float(r["N"]) for r in sub])
-        rel = np.array([float(r["e_C_rel"]) for r in sub])
-        lx, ly = np.log(N), np.log(rel)
-        A = np.vstack([lx, np.ones_like(lx)]).T
-        m = float(np.linalg.lstsq(A, ly, rcond=None)[0][0])
-        lines.append(f"{ARM_LABEL.get(a, a)} & {m:.2f} & {rel[-1]:.4f} "
+        mC = _slope(N, np.array([float(r["e_C_rel"]) for r in sub]))
+        mF = _slope(N, np.array([float(r["e_F_rel"]) for r in sub]))
+        mL = _slope(N, np.array([float(r["e_L_rel"]) for r in sub]))
+        lines.append(f"{ARM_LABEL.get(a, a)} & {mC:.2f} & {mF:.2f} & {mL:.2f} "
                      f"& {float(sub[-1]['op_norm']):.1f} \\\\\n")
-    Path(out).write_text(_wrap("".join(lines), "l c c c"))
+    Path(out).write_text(_wrap("".join(lines), "l c c c c"))
 
 
 def make_e3_ratio_table(e3_csv, out):

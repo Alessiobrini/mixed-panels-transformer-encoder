@@ -5,7 +5,7 @@
 \usepackage[table]{xcolor}
 \usepackage{booktabs}
 \usepackage{graphicx}
-\usepackage{longtable}
+\usepackage{float}
 \usepackage{amsmath,amssymb}
 \usepackage{caption}
 \usepackage{hyperref}
@@ -16,14 +16,14 @@
 \newcommand{\best}[1]{\cellcolor{bestgreen}{\textbf{#1}}}
 \newcommand{\second}[1]{\cellcolor{secondgreen}{#1}}
 
-\newcommand{\fig}[2]{%
-  \begin{figure}[h]\centering
+\newcommand{\fig}[3]{%
+  \begin{figure}[htbp]\centering
   \IfFileExists{figs/#1}{\includegraphics[width=\linewidth]{figs/#1}}{\textit{[missing figs/#1]}}
-  \caption{#2}\end{figure}}
-\newcommand{\tab}[2]{%
-  \begin{table}[h]\centering
+  \caption{#2}\label{#3}\end{figure}}
+\newcommand{\tab}[3]{%
+  \begin{table}[htbp]\centering
   \IfFileExists{tables/#1}{\input{tables/#1}}{\textit{[missing tables/#1]}}
-  \caption{#2}\end{table}}
+  \caption{#2}\label{#3}\end{table}}
 
 \title{MPTE: Theory-Validation Simulation\\\large Results report (internal, for discussion)}
 \author{}
@@ -39,63 +39,77 @@ validates that estimator on a controlled union-factor linear DGP with known grou
 bridges it to the nonlinear model. Four experiments: E1 consistency (Theorem~1), E2 coverage
 (Theorems~2--3), E3 efficiency from transfer learning, E4 nonlinear bridge.
 
-\paragraph{Model note: why axial attention.} The simulation model takes the \emph{wide}
-equal-frequency panel $Z\in\mathbb R^{T\times N}$ directly (X and Y stacked as columns), with two
-softmax attentions read off the trained linear model: a temporal $B$ ($T\times T$) and a
-cross-sectional $A_z$ ($N\times N$), and value map $W^v=I$ so $\widetilde Z=BZA_z$, exactly as in
-the paper. We do \emph{not} flatten the panel into one token stream: at the theory's grid that is
-infeasible. A flattened $T\times N$ panel has $T\!\cdot\!N$ tokens and a $(T\!\cdot\!N)^2$ attention,
-e.g.\ at $N=T=400$ that is $160{,}000$ tokens and $2.56\times10^{10}$ attention entries; axial
-attention costs only $N^2+T^2\approx 3.2\times10^{5}$. Both give the same $A_z$ and $B$ by the same
-head/out-of-sample averaging; only the flattened block-slicing is unnecessary.
+\paragraph{Model note: recovering the two attention operators.} The theory uses two operators, a
+temporal $B$ ($T\times T$) that reweights time and a cross-sectional $A_z$ ($N\times N$) that
+reweights variables. A single self-attention layer produces only \emph{one} square matrix, over
+whatever we treat as its tokens: attend over the $T$ time rows and we get a $T\times T$ matrix
+($B$); attend over the $N$ variable columns and we get an $N\times N$ matrix ($A_z$). One attention
+therefore sees one axis only. The empirical pipeline flattens the whole panel into one long token
+stream, runs one large attention over it, and recovers $B$ and $A_z$ afterward by averaging that
+attention over variables and over time. At the sizes needed to trace asymptotic rates the
+flattening is infeasible: a flattened $T\times N$ panel has $T\!\cdot\!N$ tokens and a
+$(T\!\cdot\!N)^2$ attention, for example $160{,}000$ tokens and $2.56\times10^{10}$ entries at
+$N=T=400$. We therefore use \emph{axial} attention: one attention over the $N$ columns yields $A_z$
+and one attention over the $T$ rows yields $B$, directly and at cost $N^2+T^2\approx3.2\times10^5$.
+This produces the same two operators the paper defines, obtained directly rather than by averaging a
+flattened map. The value map is fixed to the identity ($W^v=I$, so $V=Z$): the attention reweights
+the panel $Z$ itself, which keeps $\widetilde Z=BZA_z$ an approximate factor model in the same
+factors and loadings, so PCA on $\widetilde Z$ recovers them.
 
 \section{E1 --- Consistency (Theorem 1)}
-We track the relative error of the estimated common component, $\|\widehat C - C\|_F^2/\|C\|_F^2$,
-as the panel grows along $N=T$. The relative form is scale-invariant, so it is comparable across
-operator arms, whereas the absolute error confounds estimation quality with the operator-dependent
-scale of the target $C=BC A_z$. Consistency requires the relative error to decline toward zero, and
-a log-log slope near $-1$ matches the classical PCA rate $1/T+2/N$.
+Theorem~1 gives consistency of the factor, loading, and common-component estimates. We track the
+common component $C=F\Lambda^\top$, the rotation-free combination of the factor and loading
+estimates: it needs no rotation alignment and summarizes both in one quantity. We report its
+relative error $\|\widehat C - C\|_F^2/\|C\|_F^2$ as the panel grows along $N=T$. The relative form
+is scale-invariant, so it is comparable across operator arms, whereas the absolute error confounds
+estimation quality with the operator-dependent scale of the target $C=BCA_z$. Consistency requires
+the relative error to decline toward zero, and a log-log slope near $-1$ matches the classical PCA
+rate $1/T+2/N$.
 
 We report three operator arms, each grounded in the paper. The oracle arm fixes $A_z=I$ and $B=I$,
 the pure-theory reference. The parameter-free arm uses the paper's simplest attention, $Q=K=Z$, so
 that $A_z=\mathrm{softmax}(Z^\top Z/\cdot)$ carries no learned projection. The learned arm reads the
-frozen, scaled attention off the trained linear model, estimated on a separate panel by the forecast
-objective with the target entering through its own lag, which mirrors the empirical pipeline. All
-three arms converge at a slope near one, so they agree, which is the property the design asks for:
-the data-driven operators inherit Theorem~1 at the same rate as the oracle.
+frozen, scaled attention off the trained linear model, estimated on a separate panel and then held
+fixed, the sample-splitting convention of the paper's Remark~1. All three arms converge at a slope
+near one (Figure~\ref{fig:e1}, Table~\ref{tab:e1slope}), so they agree, which is the property the
+design asks for: the data-driven operators inherit Theorem~1 at the same rate as the oracle.
 
 \paragraph{A note on Assumption A.7.} For the two data-driven arms the cross-sectional operator
 norm $\|A_z\|_{\mathrm{op}}$ grows with $N$ rather than staying bounded, so A.7 as stated does not
-hold along this path. The convergence rate is nevertheless unaffected, as panel (b) read against
-panel (a) shows. We read this as evidence that A.7 is sufficient but stronger than necessary in
-these designs. Whether it can be relaxed to a slowly growing operator norm, with the rate
+hold along this path. The convergence rate is nevertheless unaffected, as panel (d) read against
+panels (a)--(c) shows. We read this as evidence that A.7 is sufficient but stronger than necessary
+in these designs. Whether it can be relaxed to a slowly growing operator norm, with the rate
 re-derived, is a question for the theory that we leave open here.
-\fig{e1_rate.pdf}{E1: (a) relative common-component error against $N=T$ on log-log axes, with a
-slope near $-1$ for every arm; (b) the cross-sectional operator norm $\|A_z\|_{\mathrm{op}}$ against
-$N$, which grows for the data-driven arms while the rate in (a) holds.}
-\tab{e1_slope.tex}{E1: fitted slope of the relative error against $N$ per operator arm (target
-$-1$), with the relative error and the operator norm at the largest $N$.}
+\fig{e1_rate.pdf}{E1: relative estimation error against $N=T$ on log-log axes for (a) the common
+component $C$, (b) the factors $F$, and (c) the loadings $\Lambda$, each with a slope near $-1$ for
+all three operator arms; (d) the cross-sectional operator norm $\|A_z\|_{\mathrm{op}}$, which grows
+for the data-driven arms while the rates in (a)--(c) hold.}{fig:e1}
+\tab{e1_slope.tex}{E1: fitted slope of the relative error against $N$ (target $-1$) for the common
+component, factors, and loadings, per operator arm, with the operator norm at the largest $N$.}{tab:e1slope}
 
 \section{E2 --- Coverage / asymptotic normality (Theorems 2--3)}
 Empirical coverage of CIs for the $Y$-strong common component $C_{y,i,t}$, using the analytic
 plug-in variance from the paper. For the baseline iid DGP the long-run covariances collapse to
 $\Omega=\sigma^2\Sigma_{F,y}$, $\Xi=\sigma^2\Sigma_{\Lambda,y_s}$, and we studentize with the general
 Theorem-3(iii) variance $\mathrm{Var}(\widehat C-C)=\sigma^2_{F}/N+\sigma^2_{\Lambda}/T$ (the F- and
-$\Lambda$-dominant cases are its limits).
-\tab{e2_coverage.tex}{E2: empirical coverage of $90\%$/$95\%$ CIs and the studentized-statistic sd, by regime.}
-\fig{e2_qq.pdf}{E2: QQ plot of the studentized $C_{y,i,t}$ against $\mathcal N(0,1)$ (mixed regime).}
+$\Lambda$-dominant cases are its limits). Coverage is near nominal in all three regimes
+(Table~\ref{tab:e2cov}) and the studentized statistic is standard normal (Figure~\ref{fig:e2qq}).
+\tab{e2_coverage.tex}{E2: empirical coverage of $90\%$/$95\%$ CIs and the studentized-statistic sd, by regime.}{tab:e2cov}
+\fig{e2_qq.pdf}{E2: QQ plot of the studentized $C_{y,i,t}$ against $\mathcal N(0,1)$ (mixed regime).}{fig:e2qq}
 
 \section{E3 --- Efficiency from transfer learning}
 The joint $(X,Y)$ estimator of $C_{y,i,t}$ is more precise than the $Y$-only estimator; the gain
-grows with the auxiliary size $N_x$ and saturates because only one factor is shared.
-\fig{e3_efficiency.pdf}{E3: MSE ratio (Y-only / joint) vs.\ $N_x$.}
-\tab{e3_ratio.tex}{E3: joint vs.\ Y-only common-component MSE and their ratio.}
+grows with the auxiliary size $N_x$ and saturates because only one factor is shared
+(Figure~\ref{fig:e3}, Table~\ref{tab:e3}).
+\fig{e3_efficiency.pdf}{E3: MSE ratio (Y-only / joint) vs.\ $N_x$.}{fig:e3}
+\tab{e3_ratio.tex}{E3: joint vs.\ Y-only common-component MSE and their ratio.}{tab:e3}
 
 \section{E4 --- Nonlinear bridge}
 On linear-truth data we ask whether the nonlinear model builds the factor representation the theory
-describes. We measure two subspaces against the true attended factors $F^{(B)}=BF$ by canonical
-correlation: the nonlinear model's $k$-dim latent, and the linear PCA estimator's factors. The
-linear estimator recovers the full attended factor space. The nonlinear model, trained on a
+describes (Figure~\ref{fig:e4}). We measure two subspaces against the true attended factors
+$F^{(B)}=BF$ by canonical correlation: the nonlinear model's $k$-dim latent, and the linear PCA
+estimator's factors. The linear estimator recovers the full attended factor space. The nonlinear
+model, trained on a
 single-target forecast objective with a deliberately minimal architecture, recovers the
 target-relevant direction strongly (leading canonical correlation $\approx 0.98$) while leaving the
 orthogonal factors to the linear estimator, since a single-target objective only needs the direction
@@ -104,12 +118,16 @@ linear ablation is the paper's Table~1 result; here we add the factor-space stat
 ground truth for the target signal.
 \fig{e4_cca.pdf}{E4: canonical correlations with $F^{(B)}$, nonlinear latent vs.\ linear PCA. The
 nonlinear model recovers the leading, target-relevant factor; the linear estimator recovers the full
-space.}
+space.}{fig:e4}
 
 \section{Learned operators}
-\fig{operators.pdf}{Learned, frozen $A_z$ ($N\times N$) and $B$ ($T\times T$) from the
-independent-sample linear model.}
-
-\IfFileExists{repro_appendix.tex}{\input{repro_appendix.tex}}{}
+Figure~\ref{fig:ops} shows the frozen cross-sectional operator $A_z$ and temporal operator $B$ read
+off the trained linear model on one panel. The attention concentrates on a few variables and time
+points, the bright stripes, which is the structure behind the operator norm that grows with $N$ in
+Figure~\ref{fig:e1}(d).
+\begin{figure}[ht]\centering
+\IfFileExists{figs/operators.pdf}{\includegraphics[width=\linewidth]{figs/operators.pdf}}{\textit{[missing figs/operators.pdf]}}
+\caption{Learned, frozen $A_z$ ($N\times N$) and $B$ ($T\times T$) from the independent-sample
+linear model.}\label{fig:ops}\end{figure}
 
 \end{document}

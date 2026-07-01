@@ -36,6 +36,20 @@ def factor_error(F_hat, F_B):
     return float((resid ** 2).sum() / F_hat.shape[0])
 
 
+def loading_error_relative(Lambda_hat, Lambda_A):
+    """Scale-invariant loading error after LS alignment: ||resid||_F^2 / ||Lambda_hat||_F^2."""
+    H = ls_align(Lambda_hat, Lambda_A)
+    resid = Lambda_hat - Lambda_A @ H.T
+    return float((resid ** 2).sum() / (Lambda_hat ** 2).sum())
+
+
+def factor_error_relative(F_hat, F_B):
+    """Scale-invariant factor error after LS alignment: ||resid||_F^2 / ||F_hat||_F^2."""
+    G = ls_align(F_hat, F_B)
+    resid = F_hat - F_B @ G.T
+    return float((resid ** 2).sum() / (F_hat ** 2).sum())
+
+
 def common_error(C_hat, C_true):
     """e_C = (1/(N T)) || C_hat - C_true ||_F^2 (alignment-free, rotation-invariant).
 

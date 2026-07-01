@@ -51,11 +51,14 @@ def main():
         for (T, N) in grid:
             cell = run_cell(arm, T, N, args.reps, dims, k, 16, epochs=args.epochs)
             rel = float(np.mean([c["e_C_rel"] for c in cell]))
+            frel = float(np.mean([c["e_F_rel"] for c in cell]))
+            lrel = float(np.mean([c["e_L_rel"] for c in cell]))
             ab = float(np.mean([c["e_C"] for c in cell]))
             op = float(np.mean([c["op_norm"] for c in cell]))
             Ns.append(N); rels.append(rel); abss.append(ab); ops.append(op)
-            rows.append(dict(arm=arm, N=N, T=T, e_C_rel=rel, e_C_abs=ab, op_norm=op,
-                             alpha_bar=cell[0]["alpha_bar"], reps=args.reps))
+            rows.append(dict(arm=arm, N=N, T=T, e_C_rel=rel, e_F_rel=frel, e_L_rel=lrel,
+                             e_C_abs=ab, op_norm=op, alpha_bar=cell[0]["alpha_bar"],
+                             reps=args.reps))
             print(f"[{arm:14s}] N={N:4d}  rel_eC={rel:.4f}  op_norm={op:6.2f}", flush=True)
         slope = _slope(np.array(Ns, float), np.array(rels))
         summary[arm] = slope

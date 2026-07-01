@@ -102,6 +102,8 @@ def run_cell(arm, T, N, reps, dims, k, d_model, base_seed=0, epochs=800, lr=1e-2
             e_F=alignment.factor_error(F_hat, F_B),
             e_C=alignment.common_error(C_hat, C_true),
             e_C_rel=alignment.common_error_relative(C_hat, C_true),
+            e_F_rel=alignment.factor_error_relative(F_hat, F_B),
+            e_L_rel=alignment.loading_error_relative(Lambda_hat, Lambda_A),
             op_norm=float(np.linalg.norm(A_z, 2)),
             alpha_bar=a_bar,
         ))
