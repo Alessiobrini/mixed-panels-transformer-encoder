@@ -56,6 +56,11 @@ flattened map. The value map is fixed to the identity ($W^v=I$, so $V=Z$): the a
 the panel $Z$ itself, which keeps $\widetilde Z=BZA_z$ an approximate factor model in the same
 factors and loadings, so PCA on $\widetilde Z$ recovers them.
 
+\paragraph{Setup.} The data-generating process is the union-factor linear model of the design
+note ($k=4$ factors, $N_x{:}N_y=2{:}1$, iid idiosyncratic noise). Every quantity averages over
+$2000$ Monte Carlo replications: per $(T,N)$ cell in E1 (grid $N=T\in\{80,160,320,640,1000\}$), in
+E2 and E3, and over $2000$ out-of-sample panels in E4 (at $N=T=300$).
+
 \section{E1 --- Consistency (Theorem 1)}
 Theorem~1 gives consistency of the factor, loading, and common-component estimates. We track the
 common component $C=F\Lambda^\top$, the rotation-free combination of the factor and loading

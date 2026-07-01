@@ -369,3 +369,12 @@ question worth raising. Newest stage at the bottom. Branch: `theory-validation-s
   compiled PDF (figure PDFs force-added past the *.pdf ignore, matching how the repo tracks its
   own figures). Pushed to origin/main.
 - 23 tests still pass; report compiles 0 overfull, 0 undefined refs, 6 pages.
+
+## Stage 18 — Standardize all experiments to 2000 replications
+- Added a "Setup" note to the report stating the DGP and replication counts. Then standardized
+  every experiment to 2000 reps (E1 100->2000, E3 500->2000, E4 n_oos 50->2000; E2 already 2000)
+  and reran the full QUICK=0 build, backing up the prior CSVs to _before_2000 for a diff.
+- Before/after: NOTHING changes beyond third-decimal Monte Carlo jitter. E1 slopes ~ -1 for all
+  three arms (learned C slope -1.04 -> -1.08, still ~ -1); E2 coverage byte-identical; E3 ratios
+  and E4 CCA move only in the third decimal. Conclusions and headline values unchanged.
+- Report and Overleaf copy rebuilt (5 pages, 0 overfull); paper repo updated + pushed.
