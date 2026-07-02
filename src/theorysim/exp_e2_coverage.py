@@ -39,8 +39,14 @@ np.seterr(divide="ignore", over="ignore", invalid="ignore")
 Z90, Z95 = 1.6448536269514722, 1.959963984540054
 
 
-def run_regime(regime, N, T, reps, dims, struct_seed=0, noise_seed0=10_000):
-    """Coverage and studentized stats for one regime at (N, T)."""
+def run_regime(regime, N, T, reps, dims, A_z=None, B=None, struct_seed=0, noise_seed0=10_000):
+    """Coverage and studentized stats for one regime at (N, T).
+
+    A_z, B: operators to apply before PCA. None -> oracle (identity). When learned/frozen
+    operators are passed, the target is the attended common component (B C A_z) and PCA runs
+    on the attended panel; the same analytic plug-in SE is used, so coverage shows whether the
+    paper's variance stays calibrated under the operators the model actually learns.
+    """
     k_ys = dims["k_ys"]
     k = k_ys  # k_R = 0 for E2 this pass
     N_y = max(2, round(N / 3))
@@ -50,16 +56,21 @@ def run_regime(regime, N, T, reps, dims, struct_seed=0, noise_seed0=10_000):
     sigma2 = base.meta["sigma2"]
     i = int(base.idx_y[0])     # representative Y unit
     t = T // 2                 # representative time
-    C_true = float(base.C[t, i])
+    if A_z is None:
+        A_z = np.eye(N)
+        B = np.eye(T)
+    C_target = B @ base.C @ A_z             # attended common component (= C for oracle)
+    C_true = float(C_target[t, i])
 
     zstats = []
     cov90 = cov95 = 0
     for r in range(reps):
         rng = np.random.default_rng(noise_seed0 + r)
         Z = base.C + np.sqrt(sigma2) * rng.standard_normal(base.C.shape)
-        Lambda_hat, F_hat, C_hat = estimator.pca_factors(Z, k)
+        Ztilde = B @ Z @ A_z
+        Lambda_hat, F_hat, C_hat = estimator.pca_factors(Ztilde, k)
         C_it = float(C_hat[t, i])
-        sigma2_hat = float(((Z - C_hat) ** 2).mean())
+        sigma2_hat = float(((Ztilde - C_hat) ** 2).mean())
 
         lam_i = Lambda_hat[i]                          # (k,)
         var_F = sigma2_hat * float(lam_i @ lam_i)      # Sigma_Lambda,ys = I (normalization)

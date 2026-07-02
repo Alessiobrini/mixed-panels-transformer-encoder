@@ -61,6 +61,16 @@ def main():
     if (o / "e4" / "results.csv").exists():
         plots.plot_e4_cca(o / "e4" / "results.csv", figs / "e4_cca.pdf")
 
+    # --- Addition (July 2): three appended exhibits, kept separate from the above. ---
+    if any(Path(p).exists() for p in e1_csvs):
+        plots.plot_e1_error_vs_alpha(e1_csvs, figs / "e1_error_vs_alpha.pdf", arms=arms)
+    e4_csv = o / "e4" / "results.csv"
+    if e4_csv.exists():
+        tables.make_e4_block_table(e4_csv, tabs / "e4_block.tex")
+    e2_both = o / "e2" / "coverage_both_arms.csv"
+    if e2_both.exists():
+        tables.make_e2_both_arms_table(e2_both, tabs / "e2_both_arms.tex")
+
     # Heatmaps of the learned, frozen operators.
     hm = build_heatmap_operators(o / "operators" / "heatmap")
     plots.plot_operator_heatmaps(hm / "Az.npy", hm / "B.npy", figs / "operators.pdf")

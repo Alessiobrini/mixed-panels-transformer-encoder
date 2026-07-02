@@ -42,7 +42,7 @@ def _dims(dims, N, T):
 LSEED = 777
 
 
-def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0):
+def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0, k_nl=None):
     """Train nonlinear + linear models (paper-faithful lagged-target objective) and compare:
       - Y-strong subspace recovery: canonical correlations of the nonlinear latent (and of the
         linear PCA factors) with the true attended Y-STRONG factors B F_{ys}; ~1 means the
@@ -53,10 +53,11 @@ def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0):
     """
     dd = _dims(dims, N, T)
     k_ys = dims.get("k_ys", 2)
+    k_nl = k if k_nl is None else k_nl   # nonlinear latent dim (k_nl=k_ys tests block recovery)
     train = dgp.draw(seed=seed, dims=dd, loadings_seed=LSEED)
 
     nl_model = operators.train_operators(
-        train, k=k, d_model=d_model, use_nonlinearity=True, epochs=epochs, lr=lr, seed=seed,
+        train, k=k_nl, d_model=d_model, use_nonlinearity=True, epochs=epochs, lr=lr, seed=seed,
         target_mode="lag")
     lin_model = operators.train_operators(
         train, k=k, d_model=d_model, use_nonlinearity=False, epochs=epochs, lr=lr, seed=seed,
@@ -68,6 +69,7 @@ def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0):
     A_z, B = operators.scale_operators(S_z, S_tau, N, T)
 
     cca_nl, cca_lin, cca_nl_ys, cca_lin_ys = [], [], [], []
+    cca_nl_rest, cca_lin_rest = [], []
     rel_nl, rel_lin, rel_nl_lin = [], [], []
     series = None
     for j in range(n_oos):
@@ -81,13 +83,16 @@ def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0):
         latent = latent.numpy()
         F_B_nl = B_nl.numpy() @ d.F                   # attended factors via the model's own B
         cca_nl.append(alignment.canonical_correlations(latent, F_B_nl))
+        # Block-wise: Y-strong sub-block F^(B)_S vs the rest block F^(B)_R (X-only factors).
         cca_nl_ys.append(alignment.canonical_correlations(latent, B_nl.numpy() @ d.F[:, :k_ys]))
+        cca_nl_rest.append(alignment.canonical_correlations(latent, B_nl.numpy() @ d.F[:, k_ys:]))
 
         # Linear PCA estimator (frozen linear operators).
         Ztilde = estimator.attended_panel(B, d.Z, A_z)
         _, F_hat, C_hat = estimator.pca_factors(Ztilde, k)
         cca_lin.append(alignment.canonical_correlations(F_hat, B @ d.F))
         cca_lin_ys.append(alignment.canonical_correlations(F_hat, B @ d.F[:, :k_ys]))
+        cca_lin_rest.append(alignment.canonical_correlations(F_hat, B @ d.F[:, k_ys:]))
 
         # Fair output check: both MODELS forecast the OBSERVED target through their own heads
         # (nonlinear vs the linear ablation, the paper's Table-1 bridge), relative to target sd.
@@ -108,6 +113,8 @@ def run_e4(dims, N, T, n_oos=50, epochs=1000, lr=1e-2, k=4, d_model=16, seed=0):
         cca_lin_mean=np.mean(cca_lin, axis=0),
         cca_nl_ys_mean=np.mean(cca_nl_ys, axis=0),
         cca_lin_ys_mean=np.mean(cca_lin_ys, axis=0),
+        cca_nl_rest_mean=np.mean(cca_nl_rest, axis=0),
+        cca_lin_rest_mean=np.mean(cca_lin_rest, axis=0),
         rel_nl=float(np.mean(rel_nl)),
         rel_lin=float(np.mean(rel_lin)),
         rel_nl_lin=float(np.mean(rel_nl_lin)),
@@ -134,9 +141,12 @@ def main():
 
     res = run_e4(dims, N, T, n_oos=n_oos, epochs=epochs, lr=args.lr)
     print(f"E4 (N={N}, T={T}, n_oos={n_oos}, epochs={epochs}):")
-    print("  [headline] Y-strong canonical corr  nonlinear:",
+    print("  [headline] Y-STRONG block  nonlinear:",
           np.array2string(res["cca_nl_ys_mean"], precision=3),
           " linear:", np.array2string(res["cca_lin_ys_mean"], precision=3))
+    print("  [headline] REST block      nonlinear:",
+          np.array2string(res["cca_nl_rest_mean"], precision=3),
+          " linear:", np.array2string(res["cca_lin_rest_mean"], precision=3))
     print("  all-k canonical corr  nonlinear:",
           np.array2string(res["cca_nl_mean"], precision=3),
           " linear:", np.array2string(res["cca_lin_mean"], precision=3))
@@ -159,6 +169,10 @@ def main():
                 w.writerow([f"cca_nl_ys_{i+1}", c])
             for i, c in enumerate(res["cca_lin_ys_mean"]):
                 w.writerow([f"cca_lin_ys_{i+1}", c])
+            for i, c in enumerate(res["cca_nl_rest_mean"]):
+                w.writerow([f"cca_nl_rest_{i+1}", c])
+            for i, c in enumerate(res["cca_lin_rest_mean"]):
+                w.writerow([f"cca_lin_rest_{i+1}", c])
             w.writerow(["rel_nl", res["rel_nl"]])
             w.writerow(["rel_lin", res["rel_lin"]])
             w.writerow(["rel_nl_lin", res["rel_nl_lin"]])

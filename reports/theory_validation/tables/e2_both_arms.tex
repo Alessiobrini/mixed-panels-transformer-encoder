@@ -1,0 +1,12 @@
+{\scriptsize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l c c c c c c c c}
+\toprule
+Regime & $N$ & $T$ & \multicolumn{3}{c}{oracle ($A_z{=}I$)} & \multicolumn{3}{c}{learned, frozen} \\
+\cmidrule(lr){4-6}\cmidrule(lr){7-9}
+& & & Cov.\ 90 & Cov.\ 95 & $z$ sd & Cov.\ 90 & Cov.\ 95 & $z$ sd \\
+\midrule
+F-dominant & 50 & 400 & 0.878 & \best{0.936} & 1.06 & 0.204 & 0.241 & 6.05 \\
+Lambda-dominant & 400 & 50 & 0.886 & \best{0.941} & 1.02 & 0.447 & 0.515 & 2.97 \\
+mixed & 200 & 200 & 0.894 & \best{0.947} & 1.01 & 0.141 & 0.170 & 5.50 \\
+\bottomrule
+\end{tabular}}

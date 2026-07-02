@@ -135,4 +135,61 @@ Figure~\ref{fig:e1}(d).
 \caption{Learned, frozen $A_z$ ($N\times N$) and $B$ ($T\times T$) from the independent-sample
 linear model.}\label{fig:ops}\end{figure}
 
+\clearpage
+\section*{Addition after July 2nd}
+The three exhibits below were added after the first read, following the July email. Each answers
+one request directly, and each is reported as it comes out, including the two where the clean
+picture does not appear. We think the honest version is the informative one.
+
+\subsection*{A1. E1: error against the theoretical rate $\bar\alpha$}
+The request was to plot the factor and loading errors against the theoretical rate $\bar\alpha$
+rather than against $N$. Figure~\ref{fig:e1alpha} shows the relative errors on log-log axes against
+$\bar\alpha=1/T+2/N$. For the oracle the two move together on the slope-1 line, exactly as
+Theorem~1 asks. For the two data-driven arms the points scatter off the line: their realized
+$\bar\alpha$ absorbs the cross-sectional operator norm $\|A_z\|_{\mathrm{op}}$, which grows with
+$N$ and is non-monotone across the grid, so $\bar\alpha$ is no longer the clean scalar the plot
+needs on its horizontal axis. This is the same fact the main-text A.7 note reports, seen from the
+rate side. The consistency claim itself is untouched: the error-against-$N$ panels
+(Figure~\ref{fig:e1}) stay on slope $-1$ for every arm, so the data-driven operators do converge at
+the full rate. We keep both views and read them together.
+\fig{e1_error_vs_alpha.pdf}{Addition: relative error against the theoretical rate $\bar\alpha$ on
+log-log axes for (a) the factors and (b) the loadings, one series per operator arm, with a slope-1
+reference. The oracle follows the reference; the data-driven arms scatter because their realized
+$\bar\alpha$ carries the growing operator norm.}{fig:e1alpha}
+
+\subsection*{A2. E4: block-wise factor recovery}
+The request was to split the E4 canonical correlations by factor block: the $Y$-strong block
+$F^{(B)}_S$, which the target loads on, against the rest block $F^{(B)}_R$ of $X$-only factors.
+Table~\ref{tab:e4block} reports both blocks for the nonlinear latent and for the linear PCA
+factors. The linear estimator recovers both blocks near one, as a full-panel estimator should. The
+nonlinear latent recovers the leading $Y$-strong direction strongly (cc$_1\approx0.98$) but not the
+second $Y$-strong direction, and it also correlates with the rest block. The reason is that the
+latent is a linear read-out of the whole attended panel $\widetilde Z$, and $\widetilde Z$ carries
+the $X$ columns, so the rest factors sit inside the representation regardless of its dimension. We
+also tried shrinking the latent to $k=2$; that made the $Y$-strong recovery worse, not sharper, and
+did not separate the blocks. So the defensible reading of E4 is a statement about the
+target-relevant \emph{direction} the forecast objective identifies, not about isolating a full
+$Y$-strong \emph{block}. A clean block statement would need a different probe, the subspace the
+forecast head actually uses, or a design where the target loads on the whole block.
+\tab{e4_block.tex}{Addition: block-wise canonical correlations with the true attended factors, the
+$Y$-strong block $F^{(B)}_S$ against the rest block $F^{(B)}_R$, for the nonlinear latent and the
+linear PCA factors ($k=4$, $N=T=300$).}{tab:e4block}
+
+\subsection*{A3. E2: coverage under the learned operators}
+The main-text E2 uses the oracle operators, where the assumptions hold exactly. The request was to
+add the learned, frozen operators alongside. Table~\ref{tab:e2both} reports both. The oracle stays
+near nominal in all three regimes; the learned arm under-covers sharply, with the studentized
+statistic spreading well past unit variance. The cause is specific: the analytic plug-in uses the
+iid collapse $\Omega=\sigma^2\Sigma_{F,y}$, $\Xi=\sigma^2\Sigma_{\Lambda,y_s}$, but once the panel
+is passed through a concentrated $A_z$ the attended noise $B\,e\,A_z$ is no longer iid, so that
+collapse is misspecified and the interval is the wrong width. This is not a bug to tune away: it is
+the finite-sample counterpart of the general Theorem-3 variance with the full $\Omega$, $\Xi$, and
+it is the piece that pairs with the A.7 relaxation. Reporting both arms makes the boundary explicit,
+the theory is calibrated where its assumptions hold and needs the general variance where the
+operators concentrate.
+\tab{e2_both_arms.tex}{Addition: empirical coverage of the $90\%$/$95\%$ CIs and the
+studentized-statistic sd, oracle operators against learned frozen operators, by regime. The oracle
+$95\%$ cells are highlighted; the learned arm's operator norm is $\|A_z\|_{\mathrm{op}}\approx4.5$
+(F-dominant), $10.1$ ($\Lambda$-dominant), $8.8$ (mixed).}{tab:e2both}
+
 \end{document}

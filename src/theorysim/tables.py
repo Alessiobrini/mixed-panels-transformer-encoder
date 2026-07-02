@@ -96,6 +96,58 @@ def make_e1_relative_table(csv_paths, out,
     Path(out).write_text(_wrap("".join(lines), "l c c c c"))
 
 
+def make_e4_block_table(e4_csv, out):
+    """Addition (July 2): block-wise canonical correlations. Y-strong block F^(B)_S (loads the
+    target) vs the rest block F^(B)_R (X-only factors), for the nonlinear latent and the linear
+    PCA factors. Reads cca_{nl,lin}_{ys,rest}_j from the E4 results CSV."""
+    rows = _read(e4_csv)
+    v = {r["metric"]: float(r["value"]) for r in rows}
+
+    def col(prefix):
+        ks = sorted(k for k in v if k.startswith(prefix))
+        return [v[k] for k in ks]
+
+    nl_ys, nl_rest = col("cca_nl_ys_"), col("cca_nl_rest_")
+    lin_ys, lin_rest = col("cca_lin_ys_"), col("cca_lin_rest_")
+
+    def fmt(xs):
+        return " & ".join(f"{x:.3f}" for x in xs)
+
+    lines = [("Model & \\multicolumn{2}{c}{Y-strong block $F^{(B)}_S$} "
+              "& \\multicolumn{2}{c}{rest block $F^{(B)}_R$} \\\\\n"),
+             "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\n",
+             "& cc$_1$ & cc$_2$ & cc$_1$ & cc$_2$ \\\\\n\\midrule\n",
+             f"nonlinear latent & {fmt(nl_ys)} & {fmt(nl_rest)} \\\\\n",
+             f"linear PCA & {fmt(lin_ys)} & {fmt(lin_rest)} \\\\\n"]
+    Path(out).write_text(_wrap("".join(lines), "l c c c c"))
+
+
+def make_e2_both_arms_table(csv_path, out):
+    """Addition (July 2): E2 coverage under oracle vs learned operators, side by side. Bold the
+    oracle 95% cells (calibrated); the learned arm is left plain (its coverage collapses)."""
+    rows = _read(csv_path)
+    by = {(r["regime"], r["arm"]): r for r in rows}
+    regimes = []
+    for r in rows:
+        if r["regime"] not in regimes:
+            regimes.append(r["regime"])
+    lines = ["Regime & $N$ & $T$ & \\multicolumn{3}{c}{oracle ($A_z{=}I$)} "
+             "& \\multicolumn{3}{c}{learned, frozen} \\\\\n",
+             "\\cmidrule(lr){4-6}\\cmidrule(lr){7-9}\n",
+             "& & & Cov.\\ 90 & Cov.\\ 95 & $z$ sd & Cov.\\ 90 & Cov.\\ 95 "
+             "& $z$ sd \\\\\n\\midrule\n"]
+    for rg in regimes:
+        o = by[(rg, "oracle")]
+        l = by[(rg, "learned")]
+        name = rg.replace("_", "-")
+        c95 = f"\\best{{{float(o['coverage_95']):.3f}}}"
+        lines.append(
+            f"{name} & {o['N']} & {o['T']} & {float(o['coverage_90']):.3f} & {c95} "
+            f"& {float(o['z_sd']):.2f} & {float(l['coverage_90']):.3f} "
+            f"& {float(l['coverage_95']):.3f} & {float(l['z_sd']):.2f} \\\\\n")
+    Path(out).write_text(_wrap("".join(lines), "l c c c c c c c c"))
+
+
 def make_e3_ratio_table(e3_csv, out):
     rows = _read(e3_csv)
     lines = ["$N_x$ & MSE joint & MSE Y-only & ratio \\\\\n\\midrule\n"]

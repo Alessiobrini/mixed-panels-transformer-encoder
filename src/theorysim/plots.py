@@ -126,6 +126,38 @@ def plot_e1_relative(csv_paths, out, arms=("oracle", "parameter_free", "independ
     plt.close(fig)
 
 
+def plot_e1_error_vs_alpha(csv_paths, out, arms=("oracle", "parameter_free", "independent_lag")):
+    """Addition (July 2): log relative error against the theoretical rate log(alpha_bar) for
+    (a) the factors and (b) the loadings, one series per operator arm, with a slope-1 reference.
+    The oracle traces the slope-1 line; the data-driven arms scatter because their realized
+    alpha_bar carries the growing cross-sectional operator norm, so the rate the theory prices in
+    is no longer a clean scalar. We show it as requested; it is read together with the error-vs-N
+    panels, which stay on slope -1 for every arm."""
+    data = _e1_rows(csv_paths, arms)
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2))
+    fig, (axf, axl) = plt.subplots(1, 2, figsize=(w, w * 0.44))
+    ora = data.get("oracle")
+    for key, ax, title in [("e_F_rel", axf, r"(a) factors $F$"),
+                           ("e_L_rel", axl, r"(b) loadings $\Lambda$")]:
+        for a, sub in data.items():
+            ab = np.array([float(r["alpha_bar"]) for r in sub])
+            y = np.array([float(r[key]) for r in sub])
+            ax.loglog(ab, y, "o", ms=4, label=ARM_LABEL.get(a, a))
+        if ora is not None:
+            ab0 = np.array([float(r["alpha_bar"]) for r in ora])
+            y0 = np.array([float(r[key]) for r in ora])
+            c = float(np.median(y0 / ab0))
+            xr = np.array([ab0.min(), max(float(r["alpha_bar"]) for s in data.values() for r in s)])
+            ax.loglog(xr, c * xr, "k--", lw=0.8, alpha=0.6, label="slope $1$")
+        ax.set_xlabel(r"theoretical rate $\bar\alpha$")
+        ax.set_ylabel("relative error")
+        ax.set_title(title, fontsize=9)
+    axf.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_e2_qq(qq_csv, out):
     """QQ plot of the studentized statistic vs N(0,1)."""
     from scipy import stats
