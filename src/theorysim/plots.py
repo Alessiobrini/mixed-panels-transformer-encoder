@@ -171,6 +171,79 @@ def plot_e2_qq(qq_csv, out):
     plt.close(fig)
 
 
+def plot_e2_learned_qq(qq_dir, out, arm="learned_wb"):
+    """Addition (July): QQ of the studentized learned-arm statistic (mixed regime) under three
+    variance channels: iid plug-in (collapses), feasible general plug-in (item 3c), and the
+    Monte Carlo sd (item 3a). If the iid tails fan out but general/MC sit on the line, the CLT
+    survives concentration and only the plug-in width was wrong."""
+    from scipy import stats
+    from pathlib import Path as _P
+    channels = [("iid", "iid plug-in"), ("general", "general plug-in"),
+                ("mc", "Monte Carlo sd")]
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 3))
+    fig, axes = plt.subplots(1, 3, figsize=(w, w * 0.36))
+    for ax, (key, title) in zip(axes, channels):
+        p = _P(qq_dir) / f"qq_{arm}_{key}.csv"
+        if not p.exists():
+            ax.set_visible(False)
+            continue
+        z = np.array([float(r["z"]) for r in _read(p)])
+        stats.probplot(z, dist="norm", plot=ax)
+        ax.get_lines()[0].set_markersize(2)
+        ax.get_lines()[1].set_linewidth(1)
+        ax.set_title(title, fontsize=9)
+        ax.set_xlabel("theoretical quantiles", fontsize=8)
+        ax.set_ylabel("ordered $z$" if key == "iid" else "", fontsize=8)
+    fig.suptitle("E2: learned-arm studentized statistic (mixed regime)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_e2_bias_sweep(csv_path, out):
+    """Addition (July 6): the learned-arm coverage gap does not close as N grows. Left: coverage
+    vs N under the Monte Carlo sd and the feasible general plug-in, both plateauing below the
+    nominal 0.95. Right: the standardized bias (does not vanish) and the operator participation
+    ratio PR/N (the effective dimension keeps shrinking, so the concentration persists)."""
+    rows = _read(csv_path)
+    N = np.array([float(r["N"]) for r in rows])
+    mc = np.array([float(r["mc_cov"]) for r in rows])
+    gen = np.array([float(r["gen_cov"]) for r in rows])
+    bias = np.array([float(r["bias_sd"]) for r in rows])
+    pr = np.array([float(r["pr_over_n"]) for r in rows])
+
+    w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2))
+    fig, (axc, axb) = plt.subplots(1, 2, figsize=(w, w * 0.42))
+
+    axc.semilogx(N, mc, "o-", lw=1, label="Monte Carlo sd")
+    axc.semilogx(N, gen, "s-", lw=1, label="general plug-in")
+    axc.axhline(0.95, color="k", ls="--", lw=0.8, alpha=0.6, label="nominal")
+    axc.set_xlabel(r"$N=T$")
+    axc.set_ylabel("coverage of 95% CI")
+    axc.set_ylim(0.5, 1.0)
+    axc.set_title("(a) coverage plateaus below nominal", fontsize=9)
+    axc.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="lower left")
+
+    axb.semilogx(N, bias, "o-", color="C3", lw=1, label=r"standardized bias $|b|/\mathrm{sd}$")
+    axb.set_xlabel(r"$N=T$")
+    axb.set_ylabel(r"$|b|/\mathrm{sd}$", color="C3")
+    axb.tick_params(axis="y", labelcolor="C3")
+    axb.set_ylim(0, max(0.8, bias.max() * 1.2))
+    axr = axb.twinx()
+    axr.semilogx(N, pr, "^--", color="C0", lw=1, label=r"participation ratio $\mathrm{PR}/N$")
+    axr.set_ylabel(r"$\mathrm{PR}/N$", color="C0")
+    axr.tick_params(axis="y", labelcolor="C0")
+    axr.set_ylim(0, max(pr) * 1.3)
+    axb.set_title("(b) bias persists, operator stays concentrated", fontsize=9)
+    for ax in (axc, axb):
+        ax.set_xticks(N)
+        ax.set_xticklabels([str(int(n)) for n in N])
+        ax.xaxis.set_minor_locator(plt.NullLocator())
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_e3_efficiency(e3_csv, out):
     rows = _read(e3_csv)
     nx = [float(r["N_x"]) for r in rows]

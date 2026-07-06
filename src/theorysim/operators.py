@@ -36,6 +36,25 @@ def within_block_restrict(A_z, idx_x, idx_y):
     return A
 
 
+def clip_operator(A, kappa, dim, iters=2):
+    """Project a frozen operator so both halves of A.7 hold: clip its singular values at
+    kappa (bounded op-norm, first half of A.7) and re-apply the trace scaling so
+    tr(A^T A) = dim (finite effective dimension, second half). Alternate clip/rescale
+    `iters` times; the fixed point has op-norm ~ kappa and trace = dim. Deterministic
+    function of A, so the Remark-1 freeze convention is intact. This is the attention
+    analogue of eigenvalue clipping for covariance matrices. Same kappa at every N keeps
+    the op-norm bounded as the panel grows, unlike the raw learned operator.
+    """
+    M = np.asarray(A, float).copy()
+    for _ in range(iters):
+        U, s, Vt = np.linalg.svd(M, full_matrices=False)
+        s = np.minimum(s, float(kappa))
+        M = (U * s) @ Vt
+        c = np.sqrt(dim / float((M ** 2).sum()))
+        M = c * M
+    return M
+
+
 def oracle_operators(N, T):
     """Population/oracle operators: identity on both axes (robustness arm 1)."""
     return np.eye(N), np.eye(T)

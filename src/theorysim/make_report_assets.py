@@ -71,6 +71,16 @@ def main():
     if e2_both.exists():
         tables.make_e2_both_arms_table(e2_both, tabs / "e2_both_arms.tex")
 
+    # --- Addition (July 6): coverage across operator arms and variance channels. ---
+    e2_gate = o / "e2" / "coverage_gate.csv"
+    if e2_gate.exists():
+        tables.make_e2_gate_table(e2_gate, tabs / "e2_gate.tex")
+    if (o / "e2" / "qq_learned_wb_iid.csv").exists():
+        plots.plot_e2_learned_qq(o / "e2", figs / "e2_learned_qq.pdf")
+    e2_bias = o / "e2" / "bias_sweep.csv"
+    if e2_bias.exists():
+        plots.plot_e2_bias_sweep(e2_bias, figs / "e2_bias_sweep.pdf")
+
     # Heatmaps of the learned, frozen operators.
     hm = build_heatmap_operators(o / "operators" / "heatmap")
     plots.plot_operator_heatmaps(hm / "Az.npy", hm / "B.npy", figs / "operators.pdf")

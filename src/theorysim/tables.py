@@ -122,6 +122,49 @@ def make_e4_block_table(e4_csv, out):
     Path(out).write_text(_wrap("".join(lines), "l c c c c"))
 
 
+def make_e2_gate_table(csv_path, out):
+    """Addition (July): E2 coverage across operator arms and variance channels. Per regime and
+    arm: op-norm and the 95% coverage under the iid plug-in, the feasible general plug-in, and
+    the Monte Carlo sd. Reads the long-format coverage_gate.csv."""
+    rows = _read(csv_path)
+    ARM = [("oracle", "oracle ($A_z{=}I$)"),
+           ("learned_raw", "learned, raw"),
+           ("learned_wb", "learned, block-restricted"),
+           ("clipped_wb", "learned, clipped")]
+    regimes = []
+    for r in rows:
+        if r["regime"] not in regimes:
+            regimes.append(r["regime"])
+
+    def cell(regime, arm, method):
+        for r in rows:
+            if r["regime"] == regime and r["arm"] == arm and r["method"] == method:
+                return float(r["coverage_95"]), float(r["op_norm"])
+        return None, None
+
+    lines = ["Regime & Operator arm & $\\|A_z\\|_{\\mathrm{op}}$ & iid & general & MC \\\\\n\\midrule\n"]
+    for rg in regimes:
+        name = rg.replace("_", "-")
+        for a, lab in ARM:
+            c_iid, opn = cell(rg, a, "iid")
+            if c_iid is None:
+                continue
+            c_gen, _ = cell(rg, a, "general")
+            c_mc, _ = cell(rg, a, "mc")
+
+            def f(x):
+                return "--" if x is None else f"{x:.3f}"
+            gen = f(c_gen)
+            # highlight the general-plug-in cell where it sits inside the theory's domain
+            if a in ("oracle", "clipped_wb") and c_gen is not None:
+                gen = f"\\best{{{gen}}}"
+            mc = f(c_mc)
+            lines.append(f"{name} & {lab} & {opn:.1f} & {f(c_iid)} & {gen} & {mc} \\\\\n")
+        lines.append("\\midrule\n")
+    body = "".join(lines[:-1])  # drop trailing midrule
+    Path(out).write_text(_wrap(body, "l l c c c c"))
+
+
 def make_e2_both_arms_table(csv_path, out):
     """Addition (July 2): E2 coverage under oracle vs learned operators, side by side. Bold the
     oracle 95% cells (calibrated); the learned arm is left plain (its coverage collapses)."""

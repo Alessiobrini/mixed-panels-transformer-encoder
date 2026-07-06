@@ -1,0 +1,21 @@
+{\scriptsize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l l c c c c}
+\toprule
+Regime & Operator arm & $\|A_z\|_{\mathrm{op}}$ & iid & general & MC \\
+\midrule
+F-dominant & oracle ($A_z{=}I$) & 1.0 & 0.936 & \best{0.936} & -- \\
+F-dominant & learned, raw & 4.5 & 0.241 & 0.879 & 0.949 \\
+F-dominant & learned, block-restricted & 3.8 & 0.285 & 0.860 & 0.949 \\
+F-dominant & learned, clipped & 3.1 & 0.356 & \best{0.872} & 0.942 \\
+\midrule
+Lambda-dominant & oracle ($A_z{=}I$) & 1.0 & 0.941 & \best{0.941} & -- \\
+Lambda-dominant & learned, raw & 10.1 & 0.515 & 0.825 & 0.939 \\
+Lambda-dominant & learned, block-restricted & 8.7 & 0.606 & 0.787 & 0.922 \\
+Lambda-dominant & learned, clipped & 3.4 & 0.667 & \best{0.833} & 0.947 \\
+\midrule
+mixed & oracle ($A_z{=}I$) & 1.0 & 0.947 & \best{0.947} & -- \\
+mixed & learned, raw & 8.8 & 0.170 & 0.433 & 0.697 \\
+mixed & learned, block-restricted & 8.5 & 0.132 & 0.405 & 0.643 \\
+mixed & learned, clipped & 3.4 & 0.133 & \best{0.442} & 0.735 \\
+\bottomrule
+\end{tabular}}

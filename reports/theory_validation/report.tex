@@ -192,4 +192,81 @@ studentized-statistic sd, oracle operators against learned frozen operators, by 
 $95\%$ cells are highlighted; the learned arm's operator norm is $\|A_z\|_{\mathrm{op}}\approx4.5$
 (F-dominant), $10.1$ ($\Lambda$-dominant), $8.8$ (mixed).}{tab:e2both}
 
+\clearpage
+\section*{Addition after July 6th}
+This round follows the four items of the July email, in order. The first two are settled and we
+adopt the reading proposed there. The third is the coverage work, where we ran all three checks and
+one turned out informative in a way we did not expect. The fourth is the clipped operator arm.
+
+\subsection*{B1. E1 axis: the realized rate $\bar\alpha$ per arm}
+The horizontal axis of Figure~\ref{fig:e1alpha} is each arm's own realized three-term rate
+$\bar\alpha$, computed from that arm's operators; it equals $1/T+2/N$ only at the oracle, where
+$A_z=I$ and $B=I$. Read this way, Theorem~1 is an upper bound, error $=O_P(\bar\alpha)$, so points
+on or below the slope-1 line are what it permits. The bound is sharp at the oracle, where A.7 holds,
+and conservative under the concentrated data-driven operators, where the slack sits in the middle
+term of $\bar\alpha$.
+
+\subsection*{B2. E4 blocks: a one-dimensional identified set}
+With a single-target forecast objective the identified set is one-dimensional: the forecast needs
+only the $\Lambda_i$ combination of the strong factors, so a leading canonical correlation near
+$0.98$ on one $Y$-strong direction, and no more, is what the theory predicts. The pickup on the rest
+block is something the theory neither requires nor forbids. This is the statement we attach to
+Table~\ref{tab:e4block}.
+
+\subsection*{B3. Coverage under the learned operators}
+We ran the three checks. Table~\ref{tab:e2gate} collects coverage for the oracle and three learned
+variants (raw, block-restricted, clipped) under three variance channels: the iid plug-in, the
+feasible general plug-in, and the Monte Carlo sd.
+
+\emph{(a) Re-studentize with the Monte Carlo variance.} Dividing the same learned-arm draws by the
+sd measured in simulation lifts coverage a long way from the iid collapse, but not all the way to
+nominal, and the improvement is uneven across regimes (Table~\ref{tab:e2gate}, MC column;
+Figure~\ref{fig:e2qq6}). So the width was indeed part of the problem, but not the whole of it.
+
+\emph{(b) Block restriction.} The E2 operators were not block-restricted, so we reran with the
+X-to-Y cross terms zeroed. The collapse under the iid plug-in barely moves
+(Table~\ref{tab:e2gate}), so it is not identification leakage from the $X$ block; it is the interval
+itself.
+
+\emph{(c) The feasible general plug-in.} The attended noise $\widetilde e=B e A_z$ has a known
+covariance up to one scalar, $\mathrm{Cov}(\widetilde e_{ti},\widetilde e_{sj})=
+\sigma^2 (BB^\top)_{ts}(A_z^\top A_z)_{ij}$, so we estimate $\sigma^2$ from the PCA residuals and
+rebuild the two score covariances with $(A_z^\top A_z)$ and $(BB^\top)$ inserted where the iid
+collapse used identities. This is the Theorem-3 variance specialized to our frozen-operator design.
+It reduces to the iid plug-in at the oracle exactly, and it recovers most of the width the iid
+collapse discards (Table~\ref{tab:e2gate}, general column), but it too stops short of nominal.
+
+The reason the corrections stop short is a finite-sample bias, and it does not close as the panel
+grows. Figure~\ref{fig:e2bias} sweeps $N=T$ and reports, averaged over operator seeds and cells, the
+standardized bias of the common component and the coverage under the Monte Carlo and general widths.
+The bias plateaus near $0.4$ standard errors and coverage plateaus below nominal, because the
+single-target attention concentrates on a bounded set of hub variables: its participation ratio
+$\mathrm{PR}/N$ keeps shrinking, so the effective cross-sectional dimension does not grow with $N$.
+Both the bias and the standard error then shrink at the same rate and their ratio, which is what
+coverage depends on, does not vanish. This does not contradict E1: the Frobenius-norm error in
+Figure~\ref{fig:e1} is carried by the high-signal hub cells the attention favors, while the
+$Y$-block target cells keep a small relative bias. The upshot is that per-cell inference under the
+concentrated learned operator sits on the boundary the A.7 concentration control is there to
+exclude.
+\tab{e2_gate.tex}{Addition: E2 coverage of the $95\%$ CI by regime and operator arm, under the iid
+plug-in, the feasible general plug-in, and the Monte Carlo sd. The general-plug-in cells inside the
+theory's domain (oracle and clipped) are highlighted.}{tab:e2gate}
+\fig{e2_learned_qq.pdf}{Addition: QQ of the learned-arm studentized statistic (mixed regime) under
+the iid plug-in, the general plug-in, and the Monte Carlo sd. The iid tails fan out; the general and
+Monte Carlo channels pull the bulk onto the line but leave a residual off-center from the
+finite-sample bias.}{fig:e2qq6}
+\fig{e2_bias_sweep.pdf}{Addition: (a) coverage against $N=T$ under the Monte Carlo and general
+widths, both plateauing below the nominal $0.95$; (b) the standardized bias, which does not vanish,
+and the operator participation ratio $\mathrm{PR}/N$, which keeps shrinking, so the learned operator
+stays concentrated as $N$ grows.}{fig:e2bias}
+
+\subsection*{B4. The clipped operator arm}
+We add the projected arm: clip the singular values of the frozen $A_z$ at a fixed $\kappa=3$,
+re-apply the trace scaling, and alternate twice so both halves of A.7 hold. It is a deterministic
+function of the frozen operator, so the sample-splitting convention is intact. The clip does bound
+the operator norm, from $\approx8$ to $9$ down to $\approx3$ in the $\Lambda$-dominant and mixed
+regimes (Table~\ref{tab:e2gate}), but coverage does not improve with it. The operator norm was not
+the binding quantity: the concentration measured by the participation ratio, and the bias it drives,
+are what keep coverage off nominal, and the singular-value clip does not change them.
+
 \end{document}

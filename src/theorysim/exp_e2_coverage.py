@@ -39,13 +39,23 @@ np.seterr(divide="ignore", over="ignore", invalid="ignore")
 Z90, Z95 = 1.6448536269514722, 1.959963984540054
 
 
-def run_regime(regime, N, T, reps, dims, A_z=None, B=None, struct_seed=0, noise_seed0=10_000):
+def run_regime(regime, N, T, reps, dims, A_z=None, B=None, struct_seed=0, noise_seed0=10_000,
+               variance="iid"):
     """Coverage and studentized stats for one regime at (N, T).
 
     A_z, B: operators to apply before PCA. None -> oracle (identity). When learned/frozen
     operators are passed, the target is the attended common component (B C A_z) and PCA runs
     on the attended panel; the same analytic plug-in SE is used, so coverage shows whether the
     paper's variance stays calibrated under the operators the model actually learns.
+
+    variance: "iid" uses the iid-collapse plug-in Omega = sigma^2 Sigma_F, Xi = sigma^2 Sigma_L.
+    "general" uses the feasible Theorem-3 plug-in for our frozen-operator DGP, where the attended
+    noise e~ = B e A_z has Cov(e~_ti, e~_sj) = sigma^2 (BB^T)_ts (A_z^T A_z)_ij. It rebuilds the
+    two score covariances with (A_z^T A_z) and (BB^T) inserted where the iid collapse had
+    identities: the factor-CLT term (scales 1/N) uses M_L = Lambda^T (A_z^T A_z) Lambda / N
+    scaled by (BB^T)_tt, and the loading-CLT term (scales 1/T) uses M_F = F^T (BB^T) F / T scaled
+    by (A_z^T A_z)_ii. Under the DGP the factors have unit unconditional variance, so Sigma_F ~ I
+    and the general SE reduces to the iid SE at the oracle (validated numerically).
     """
     k_ys = dims["k_ys"]
     k = k_ys  # k_R = 0 for E2 this pass
@@ -61,8 +71,14 @@ def run_regime(regime, N, T, reps, dims, A_z=None, B=None, struct_seed=0, noise_
         B = np.eye(T)
     C_target = B @ base.C @ A_z             # attended common component (= C for oracle)
     C_true = float(C_target[t, i])
+    # Frozen-operator second moments for the general-variance plug-in (item 3c).
+    AtA = A_z.T @ A_z
+    BBt = B @ B.T
+    AtA_ii = float(AtA[i, i])
+    BBt_tt = float(BBt[t, t])
 
     zstats = []
+    errors = []
     cov90 = cov95 = 0
     for r in range(reps):
         rng = np.random.default_rng(noise_seed0 + r)
@@ -73,28 +89,44 @@ def run_regime(regime, N, T, reps, dims, A_z=None, B=None, struct_seed=0, noise_
         sigma2_hat = float(((Ztilde - C_hat) ** 2).mean())
 
         lam_i = Lambda_hat[i]                          # (k,)
-        var_F = sigma2_hat * float(lam_i @ lam_i)      # Sigma_Lambda,ys = I (normalization)
         Sigma_F = (F_hat.T @ F_hat) / T
         f_t = F_hat[t]
-        var_L = sigma2_hat * float(f_t @ np.linalg.solve(Sigma_F, f_t))
 
-        # General (Theorem 3(iii)) variance Var(C_hat - C) = sigma^2_F/N + sigma^2_Lambda/T,
-        # of which the F-dominant (drop the /T term) and Lambda-dominant (drop the /N term)
-        # are the limiting cases. The combined SE gives correct coverage for ANY (N, T);
-        # using a single-term corner SE off its corner under-covers (the dropped term is
-        # non-negligible). We therefore studentize with the combined SE in every setting.
+        if variance == "general":
+            # Feasible Theorem-3 plug-in: insert (A_z^T A_z) and (BB^T) into the two score
+            # covariances. sigma^2_hat = ||e~||_F^2 / (tr(BB^T) tr(A_z^T A_z)); for the scaled
+            # operators tr(BB^T)=T, tr(A_z^T A_z)=N, so it equals the iid mean residual above.
+            M_L = (Lambda_hat.T @ AtA @ Lambda_hat) / N      # attended loading Gram (k x k)
+            M_F = (F_hat.T @ BBt @ F_hat) / T                # attended factor Gram (k x k)
+            # Factor-CLT term (scales 1/N): Lambda_i^T Sigma_L^{-1} Gamma_t Sigma_L^{-1} Lambda_i
+            # with Sigma_L = I and Gamma_t = sigma^2 (BB^T)_tt M_L. No Sigma_F sandwich under the
+            # Lambda-normalization; reduces to sigma^2 Lambda_i^T Lambda_i at the oracle.
+            var_F = sigma2_hat * BBt_tt * float(lam_i @ (M_L @ lam_i))
+            # Loading-CLT term (scales 1/T): F_t^T Sigma_F^{-1} Phi_i Sigma_F^{-1} F_t with
+            # Phi_i = sigma^2 (A_z^T A_z)_ii M_F; reduces to sigma^2 F_t^T Sigma_F^{-1} F_t.
+            SinvF = np.linalg.solve(Sigma_F, f_t)
+            var_L = sigma2_hat * AtA_ii * float(SinvF @ (M_F @ SinvF))
+        else:
+            # iid collapse Omega = sigma^2 Sigma_F, Xi = sigma^2 Sigma_L (Sigma_L = I).
+            var_F = sigma2_hat * float(lam_i @ lam_i)
+            var_L = sigma2_hat * float(f_t @ np.linalg.solve(Sigma_F, f_t))
+
+        # Combined SE Var(C_hat - C) = sigma^2_F/N + sigma^2_Lambda/T, of which the F-dominant
+        # (drop the /T term) and Lambda-dominant (drop the /N term) are the limiting cases.
         se = np.sqrt(var_F / N + var_L / T)
         z = (C_it - C_true) / se
         zstats.append(z)
+        errors.append(C_it - C_true)
         cov90 += abs(z) <= Z90
         cov95 += abs(z) <= Z95
 
     zstats = np.array(zstats)
+    errors = np.array(errors)
     return dict(
         regime=regime, N=N, T=T, reps=reps,
         coverage_90=cov90 / reps, coverage_95=cov95 / reps,
         z_mean=float(zstats.mean()), z_sd=float(zstats.std()),
-        zstats=zstats,
+        zstats=zstats, errors=errors,
     )
 
 
