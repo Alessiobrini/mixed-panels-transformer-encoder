@@ -55,6 +55,33 @@ def clip_operator(A, kappa, dim, iters=2):
     return M
 
 
+def blend_operator(A, kappa0, delta, dim):
+    """Corrected projection into A.7's domain: clip the singular values of A at kappa0, add
+    delta*I, then trace-rescale once so tr(.^T .) = dim. A bare clip/rescale has no fixed point
+    for an effectively low-rank spectrum (clipping removes top mass but cannot create the tail
+    mass the trace half needs), so it lands on the A.7 boundary. The delta*I addition restores
+    that tail mass, giving every variable a baseline self-weight; it is a shrinkage of the learned
+    attention toward the identity. The result satisfies all three diagnostics: op-norm bounded,
+    tr/dim = c_A, and PR/dim >= c_A/kappa0^2 (the two halves of A.7 jointly, i.e. anti-concentration).
+    Deterministic in A, so the Remark-1 freeze convention is intact.
+    """
+    M = np.asarray(A, float)
+    U, s, Vt = np.linalg.svd(M, full_matrices=False)
+    s = np.minimum(s, float(kappa0))
+    M = (U * s) @ Vt + float(delta) * np.eye(dim)
+    return M * np.sqrt(dim / float((M ** 2).sum()))
+
+
+def a7_diagnostics(A):
+    """Return (op_norm, tr/N, PR/N) for A: the A.7 quantities. PR = tr(A^T A)^2 / ||A^T A||_F^2
+    is the participation ratio (effective dimension); PR/N in (0,1], ~1 for the identity."""
+    AtA = A.T @ A
+    tr = float(np.trace(AtA))
+    fro2 = float((AtA ** 2).sum())
+    N = A.shape[0]
+    return float(np.linalg.norm(A, 2)), tr / N, (tr ** 2 / fro2) / N
+
+
 def oracle_operators(N, T):
     """Population/oracle operators: identity on both axes (robustness arm 1)."""
     return np.eye(N), np.eye(T)

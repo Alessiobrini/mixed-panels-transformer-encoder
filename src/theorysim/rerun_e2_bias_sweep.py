@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.theorysim import dgp, operators as op, estimator, exp_e2_coverage as e2
+from src.theorysim import dgp, operators as op, estimator, exp_e2_coverage as e2, rates
 
 warnings.filterwarnings("ignore")
 np.seterr(all="ignore")
@@ -87,20 +87,29 @@ def main():
     args = ap.parse_args()
 
     rows = []
-    print(f"{'N=T':>6} {'bias/sd':>9} {'MCcov':>7} {'gen_cov':>8} {'PR/N':>7}", flush=True)
+    print(f"{'N=T':>6} {'bias/sd':>9} {'MCcov':>7} {'gen_cov':>8} {'PR/N':>7} "
+          f"{'alpha':>7} {'sqrtT_a':>8} {'sqrtN_a':>8}", flush=True)
     for N in args.grid:
         T = N
-        bs, cs, gs, prs = [], [], [], []
+        bs, cs, gs, prs, abs_ = [], [], [], [], []
         for os_ in args.op_seeds:
             Az, B = _build(N, T, os_, args.epochs)
             mb, mc = _bias_cov(Az, B, N, T, args.reps, args.ncell, args.nstruct)
             rg = e2.run_regime("sweep", N, T, 2 * args.reps, DIMS, A_z=Az, B=B, variance="general")
             bs.append(mb); cs.append(mc); gs.append(rg["coverage_95"]); prs.append(_pr_over_n(Az))
-        row = dict(N=N, bias_sd=np.mean(bs), mc_cov=np.mean(cs),
-                   gen_cov=np.mean(gs), pr_over_n=np.mean(prs))
+            abs_.append(rates.alpha_bar(Az, B, N, T))
+        ab = float(np.mean(abs_))
+        # Growth conditions behind Theorems 2-3: sqrt(T)*alpha_bar -> 0 and sqrt(N_eff)*alpha_bar
+        # -> 0. With the trace scaling N_eff = tr(A^T A) = N, and alpha_bar's middle term = 1/PR,
+        # so a bounded PR makes these products grow rather than vanish (the boundary, in the
+        # paper's own quantities).
+        row = dict(N=N, bias_sd=np.mean(bs), mc_cov=np.mean(cs), gen_cov=np.mean(gs),
+                   pr_over_n=np.mean(prs), alpha_bar=ab,
+                   sqrtT_alpha=np.sqrt(T) * ab, sqrtN_alpha=np.sqrt(N) * ab)
         rows.append(row)
-        print(f"{N:>6} {row['bias_sd']:>9.3f} {row['mc_cov']:>7.3f} "
-              f"{row['gen_cov']:>8.3f} {row['pr_over_n']:>7.3f}", flush=True)
+        print(f"{N:>6} {row['bias_sd']:>9.3f} {row['mc_cov']:>7.3f} {row['gen_cov']:>8.3f} "
+              f"{row['pr_over_n']:>7.3f} {ab:>7.3f} {row['sqrtT_alpha']:>8.3f} "
+              f"{row['sqrtN_alpha']:>8.3f}", flush=True)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

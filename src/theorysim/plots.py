@@ -210,7 +210,7 @@ def plot_e2_bias_sweep(csv_path, out):
     mc = np.array([float(r["mc_cov"]) for r in rows])
     gen = np.array([float(r["gen_cov"]) for r in rows])
     bias = np.array([float(r["bias_sd"]) for r in rows])
-    pr = np.array([float(r["pr_over_n"]) for r in rows])
+    sqrtN_a = np.array([float(r["sqrtN_alpha"]) for r in rows])
 
     w, _ = set_size(TEXTWIDTH_PT, fraction=1.0, subplots=(1, 2))
     fig, (axc, axb) = plt.subplots(1, 2, figsize=(w, w * 0.42))
@@ -230,15 +230,45 @@ def plot_e2_bias_sweep(csv_path, out):
     axb.tick_params(axis="y", labelcolor="C3")
     axb.set_ylim(0, max(0.8, bias.max() * 1.2))
     axr = axb.twinx()
-    axr.semilogx(N, pr, "^--", color="C0", lw=1, label=r"participation ratio $\mathrm{PR}/N$")
-    axr.set_ylabel(r"$\mathrm{PR}/N$", color="C0")
+    axr.semilogx(N, sqrtN_a, "^--", color="C0", lw=1, label=r"$\sqrt{N}\,\bar\alpha$")
+    axr.set_ylabel(r"$\sqrt{N}\,\bar\alpha$ (growth condition)", color="C0")
     axr.tick_params(axis="y", labelcolor="C0")
-    axr.set_ylim(0, max(pr) * 1.3)
-    axb.set_title("(b) bias persists, operator stays concentrated", fontsize=9)
+    axr.set_ylim(0, max(sqrtN_a) * 1.3)
+    axb.set_title(r"(b) bias and $\sqrt{N}\bar\alpha$ both fail to vanish", fontsize=9)
     for ax in (axc, axb):
         ax.set_xticks(N)
         ax.set_xticklabels([str(int(n)) for n in N])
         ax.xaxis.set_minor_locator(plt.NullLocator())
+    fig.tight_layout()
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_e2_delta_sweep(csv_path, out, kappa0=3.0):
+    """Addition (July 6): coverage of the blend arm against effective rank as the shrinkage delta
+    grows. The x-axis is PR/N, the effective dimension (equivalently the middle term of alpha_bar,
+    1/PR); a vertical line marks the A.7 threshold c_A/kappa0^2. As delta lifts PR/N through the
+    threshold, the general-plug-in coverage climbs to nominal: inference switches on exactly as
+    the operator re-enters the theory's domain."""
+    rows = _read(csv_path)
+    regimes = []
+    for r in rows:
+        if r["regime"] not in regimes:
+            regimes.append(r["regime"])
+    fig, ax = plt.subplots(figsize=set_size(TEXTWIDTH_PT, fraction=0.7))
+    for rg in regimes:
+        sub = sorted((r for r in rows if r["regime"] == rg), key=lambda r: float(r["pr_over_n"]))
+        pr = [float(r["pr_over_n"]) for r in sub]
+        cov = [float(r["gen_cov"]) for r in sub]
+        ax.plot(pr, cov, "o-", lw=1, ms=3, label=rg.replace("_", "-"))
+    ax.axhline(0.95, color="k", ls="--", lw=0.8, alpha=0.6)
+    ax.axvline(1.0 / kappa0 ** 2, color="grey", ls=":", lw=1,
+               label=r"A.7 threshold $c_A/\kappa_0^2$")
+    ax.set_xlabel(r"effective rank PR/$N$ (blend shrinkage $\delta:0\!\to\!5$)")
+    ax.set_ylabel("coverage of 95% CI (general plug-in)")
+    ax.set_ylim(0.4, 1.0)
+    ax.set_title(r"E2: inference switches on as effective rank is restored", fontsize=9)
+    ax.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="lower right")
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)

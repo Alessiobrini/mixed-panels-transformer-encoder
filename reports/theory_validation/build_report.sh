@@ -30,6 +30,8 @@ echo "== E2 gate: operator arms x variance channels (July 6 addition) =="
 $PY -m src.theorysim.rerun_e2_both_arms --reps "$E2REPS" --epochs "$EP" --kappa 3.0
 echo "== E2 bias-vs-N sweep (July 6 addition) =="
 $PY -m src.theorysim.rerun_e2_bias_sweep --reps "$E2BIASREPS" --epochs "$EP"
+echo "== E2 blend delta-sweep boundary exhibit (July 6 addition) =="
+$PY -m src.theorysim.rerun_e2_delta_sweep --reps "$E2REPS" --epochs "$EP" --op-seeds 0 1 2
 echo "== E3 efficiency =="
 $PY -m src.theorysim.exp_e3_efficiency --reps "$E3REPS"
 echo "== E4 bridge =="

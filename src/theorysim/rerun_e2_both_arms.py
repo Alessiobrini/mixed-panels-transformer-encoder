@@ -38,9 +38,10 @@ DIMS = dict(k_ys=2, k_R=0, sigma2=2.0)
 REGIMES = {"F_dominant": (50, 400), "Lambda_dominant": (400, 50), "mixed": (200, 200)}
 
 
-def _build_ops(N, T, kappa, seed=0, epochs=800, lr=1e-2):
-    """Train the linear AB1 once, freeze, and return the raw / block-restricted / clipped
-    cross-sectional operators (temporal B shared, scaled)."""
+def _build_ops(N, T, kappa, delta=1.0, seed=0, epochs=800, lr=1e-2):
+    """Train the linear AB1 once, freeze, and return the raw / block-restricted / clipped / blend
+    cross-sectional operators (temporal B shared, scaled). The clipped arm lands on the A.7
+    boundary; the blend arm (clip + delta*I + rescale) is the corrected inside-the-domain arm."""
     N_y = max(2, round(N / 3))
     N_x = N - N_y
     dd = dict(DIMS, T=T, N_x=N_x, N_y=N_y)
@@ -53,9 +54,14 @@ def _build_ops(N, T, kappa, seed=0, epochs=800, lr=1e-2):
     Az_raw, B = op.scale_operators(Sz, St, N, T)
     Sz_wb = op.within_block_restrict(Sz, tr.idx_x, tr.idx_y)
     Az_wb, _ = op.scale_operators(Sz_wb, St, N, T)
-    Az_clip = op.clip_operator(Az_wb, kappa, N)
+    # The clip / blend projections apply to BOTH operators: the temporal B is concentrated too
+    # (it drives the loading-CLT term, dominant when T is small), so fixing only A_z leaves the
+    # coverage off nominal in the Lambda-dominant regime.
+    Az_clip, B_clip = op.clip_operator(Az_wb, kappa, N), op.clip_operator(B, kappa, T)
+    Az_blend = op.blend_operator(Az_wb, kappa, delta, N)
+    B_blend = op.blend_operator(B, kappa, delta, T)
     return {"learned_raw": (Az_raw, B), "learned_wb": (Az_wb, B),
-            "clipped_wb": (Az_clip, B)}
+            "clipped_wb": (Az_clip, B_clip), "blend_wb": (Az_blend, B_blend)}
 
 
 def _mc_coverage(res):
@@ -80,9 +86,10 @@ def main():
     rows = []
     qq = {}
 
-    def add(regime, N, T, arm, method, cov90, cov95, z_sd, op_norm):
+    def add(regime, N, T, arm, method, cov90, cov95, z_sd, op_norm, tr_n=1.0, pr_n=1.0):
         rows.append(dict(regime=regime, N=N, T=T, arm=arm, method=method,
-                         coverage_90=cov90, coverage_95=cov95, z_sd=z_sd, op_norm=op_norm))
+                         coverage_90=cov90, coverage_95=cov95, z_sd=z_sd,
+                         op_norm=op_norm, tr_n=tr_n, pr_n=pr_n))
 
     print(f"reps={args.reps}  kappa={args.kappa}", flush=True)
     for name, (N, T) in REGIMES.items():
@@ -96,13 +103,14 @@ def main():
 
         ops = _build_ops(N, T, args.kappa, epochs=args.epochs)
         for arm, (A_z, B) in ops.items():
-            opn = float(np.linalg.norm(A_z, 2))
+            opn, trn, prn = op.a7_diagnostics(A_z)
             r = e2.run_regime(name, N, T, args.reps, DIMS, A_z=A_z, B=B, variance="iid")
             rg = e2.run_regime(name, N, T, args.reps, DIMS, A_z=A_z, B=B, variance="general")
-            add(name, N, T, arm, "iid", r["coverage_90"], r["coverage_95"], r["z_sd"], opn)
-            add(name, N, T, arm, "general", rg["coverage_90"], rg["coverage_95"], rg["z_sd"], opn)
+            add(name, N, T, arm, "iid", r["coverage_90"], r["coverage_95"], r["z_sd"], opn, trn, prn)
+            add(name, N, T, arm, "general", rg["coverage_90"], rg["coverage_95"], rg["z_sd"],
+                opn, trn, prn)
             c90, c95, zsd, zmc = _mc_coverage(r)
-            add(name, N, T, arm, "mc", c90, c95, zsd, opn)
+            add(name, N, T, arm, "mc", c90, c95, zsd, opn, trn, prn)
             if name == "mixed":
                 qq[f"{arm}_iid"] = r["zstats"]
                 qq[f"{arm}_general"] = rg["zstats"]

@@ -80,6 +80,9 @@ def main():
     e2_bias = o / "e2" / "bias_sweep.csv"
     if e2_bias.exists():
         plots.plot_e2_bias_sweep(e2_bias, figs / "e2_bias_sweep.pdf")
+    e2_delta = o / "e2" / "delta_sweep.csv"
+    if e2_delta.exists():
+        plots.plot_e2_delta_sweep(e2_delta, figs / "e2_delta_sweep.pdf")
 
     # Heatmaps of the learned, frozen operators.
     hm = build_heatmap_operators(o / "operators" / "heatmap")

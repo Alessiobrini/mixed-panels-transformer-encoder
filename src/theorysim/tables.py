@@ -130,7 +130,8 @@ def make_e2_gate_table(csv_path, out):
     ARM = [("oracle", "oracle ($A_z{=}I$)"),
            ("learned_raw", "learned, raw"),
            ("learned_wb", "learned, block-restricted"),
-           ("clipped_wb", "learned, clipped")]
+           ("clipped_wb", "learned, clipped"),
+           ("blend_wb", "learned, blend")]
     regimes = []
     for r in rows:
         if r["regime"] not in regimes:
@@ -139,30 +140,32 @@ def make_e2_gate_table(csv_path, out):
     def cell(regime, arm, method):
         for r in rows:
             if r["regime"] == regime and r["arm"] == arm and r["method"] == method:
-                return float(r["coverage_95"]), float(r["op_norm"])
-        return None, None
+                return (float(r["coverage_95"]), float(r["op_norm"]),
+                        float(r.get("pr_n", 1.0) or 1.0))
+        return None, None, None
 
-    lines = ["Regime & Operator arm & $\\|A_z\\|_{\\mathrm{op}}$ & iid & general & MC \\\\\n\\midrule\n"]
+    lines = ["Regime & Operator arm & $\\|A_z\\|_{\\mathrm{op}}$ & PR/$N$ "
+             "& iid & general & MC \\\\\n\\midrule\n"]
     for rg in regimes:
         name = rg.replace("_", "-")
         for a, lab in ARM:
-            c_iid, opn = cell(rg, a, "iid")
+            c_iid, opn, prn = cell(rg, a, "iid")
             if c_iid is None:
                 continue
-            c_gen, _ = cell(rg, a, "general")
-            c_mc, _ = cell(rg, a, "mc")
+            c_gen, _, _ = cell(rg, a, "general")
+            c_mc, _, _ = cell(rg, a, "mc")
 
             def f(x):
                 return "--" if x is None else f"{x:.3f}"
             gen = f(c_gen)
-            # highlight the general-plug-in cell where it sits inside the theory's domain
-            if a in ("oracle", "clipped_wb") and c_gen is not None:
+            # highlight the general-plug-in cell for the arms inside the theory's domain
+            if a in ("oracle", "blend_wb") and c_gen is not None:
                 gen = f"\\best{{{gen}}}"
-            mc = f(c_mc)
-            lines.append(f"{name} & {lab} & {opn:.1f} & {f(c_iid)} & {gen} & {mc} \\\\\n")
+            lines.append(f"{name} & {lab} & {opn:.1f} & {prn:.3f} & {f(c_iid)} & {gen} "
+                         f"& {f(c_mc)} \\\\\n")
         lines.append("\\midrule\n")
     body = "".join(lines[:-1])  # drop trailing midrule
-    Path(out).write_text(_wrap(body, "l l c c c c"))
+    Path(out).write_text(_wrap(body, "l l c c c c c"))
 
 
 def make_e2_both_arms_table(csv_path, out):
