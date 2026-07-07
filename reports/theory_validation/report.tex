@@ -195,9 +195,8 @@ $95\%$ cells are highlighted; the learned arm's operator norm is $\|A_z\|_{\math
 \clearpage
 \section*{Addition after July 6th}
 This round follows the four items of the July email, in order. The first two are settled and we
-adopt the reading proposed there. The third is the coverage work, where we ran all three checks. The
-fourth is the projected operator arm, which we correct into a blend and, once it points the way, close
-the coverage story with a boundary exhibit in the paper's own quantities.
+adopt the reading proposed there. The third is the coverage work, where we ran all three checks and
+one turned out informative in a way we did not expect. The fourth is the clipped operator arm.
 
 \subsection*{B1. E1 axis: the realized rate $\bar\alpha$ per arm}
 The horizontal axis of Figure~\ref{fig:e1alpha} is each arm's own realized three-term rate
@@ -215,22 +214,19 @@ block is something the theory neither requires nor forbids. This is the statemen
 Table~\ref{tab:e4block}.
 
 \subsection*{B3. Coverage under the learned operators}
-We ran the three checks. Table~\ref{tab:e2gate} collects coverage for the oracle and four learned
-variants (raw, block-restricted, clipped, blend) under three variance channels: the iid plug-in, the
-feasible general plug-in, and the Monte Carlo sd, alongside the A.7 quantities $\|A_z\|_{\mathrm{op}}$
-and $\mathrm{PR}/N$ (the participation ratio $\mathrm{PR}=\mathrm{tr}(A_z^\top A_z)^2/
-\|A_z^\top A_z\|_F^2$, the effective dimension; $\mathrm{tr}/N=1$ for all by the scaling).
+We ran the three checks. Table~\ref{tab:e2gate} collects coverage for the oracle and three learned
+variants (raw, block-restricted, clipped) under three variance channels: the iid plug-in, the
+feasible general plug-in, and the Monte Carlo sd.
 
 \emph{(a) Re-studentize with the Monte Carlo variance.} Dividing the same learned-arm draws by the
-sd measured in simulation restores the distributional shape, the studentized statistic is close to
-normal with the QQ bulk on the line (Figure~\ref{fig:e2qq6}) and coverage near nominal in the F- and
-$\Lambda$-dominant regimes, but a location term remains: coverage still falls short, unevenly across
-regimes (Table~\ref{tab:e2gate}, MC column). So the width was part of the problem; a residual bias in
-the common component is the rest.
+sd measured in simulation lifts coverage a long way from the iid collapse, but not all the way to
+nominal, and the improvement is uneven across regimes (Table~\ref{tab:e2gate}, MC column;
+Figure~\ref{fig:e2qq6}). So the width was indeed part of the problem, but not the whole of it.
 
 \emph{(b) Block restriction.} The E2 operators were not block-restricted, so we reran with the
-X-to-Y cross terms zeroed. The collapse under the iid plug-in barely moves (Table~\ref{tab:e2gate},
-learned rows), so it is not identification leakage from the $X$ block; it is the interval itself.
+X-to-Y cross terms zeroed. The collapse under the iid plug-in barely moves
+(Table~\ref{tab:e2gate}), so it is not identification leakage from the $X$ block; it is the interval
+itself.
 
 \emph{(c) The feasible general plug-in.} The attended noise $\widetilde e=B e A_z$ has a known
 covariance up to one scalar, $\mathrm{Cov}(\widetilde e_{ti},\widetilde e_{sj})=
@@ -238,69 +234,93 @@ covariance up to one scalar, $\mathrm{Cov}(\widetilde e_{ti},\widetilde e_{sj})=
 rebuild the two score covariances with $(A_z^\top A_z)$ and $(BB^\top)$ inserted where the iid
 collapse used identities. This is the Theorem-3 variance specialized to our frozen-operator design.
 It reduces to the iid plug-in at the oracle exactly, and it recovers most of the width the iid
-collapse discards, but on the raw and block-restricted arms it stops short of nominal.
+collapse discards (Table~\ref{tab:e2gate}, general column), but it too stops short of nominal.
 
-The reason it stops short is a finite-sample bias that does not close as the panel grows, and it is
-a statement in the paper's own quantities. Figure~\ref{fig:e2bias} sweeps $N=T$ for the learned arm
-and reports, averaged over operator seeds and cells, the standardized bias and the coverage under the
-Monte Carlo and general widths, next to $\sqrt N\,\bar\alpha$. The middle term of $\bar\alpha$ equals
-$1/\mathrm{PR}$, so a bounded participation ratio makes $\bar\alpha$ stall and $\sqrt N\,\bar\alpha$
-grow rather than vanish; the Theorem 2--3 growth conditions $\sqrt T\,\bar\alpha\!\to\!0$ and
-$\sqrt{N_{\mathrm{eff}}}\,\bar\alpha\!\to\!0$ therefore fail, and the $o_p(1)$ remainders surface as
-exactly the non-vanishing bias we measure. The single-target attention concentrates on a bounded set
-of hub variables, so $\mathrm{PR}/N$ keeps shrinking and the effective dimension does not grow with
-$N$. This does not contradict E1: the Frobenius-norm error in Figure~\ref{fig:e1} is carried by the
-high-signal hub cells the attention favors, while the $Y$-block target cells keep a small relative
-bias.
-\tab{e2_gate.tex}{Addition: E2 coverage of the $95\%$ CI by regime and operator arm, with the A.7
-quantities $\|A_z\|_{\mathrm{op}}$ and $\mathrm{PR}/N$, under the iid plug-in, the feasible general
-plug-in, and the Monte Carlo sd. The clip and blend arms apply the same projection to the temporal
-operator $B$; the general-plug-in cells for the arms inside the theory's domain (oracle and blend)
-are highlighted.}{tab:e2gate}
+The reason the corrections stop short is a finite-sample bias, and it does not close as the panel
+grows. Figure~\ref{fig:e2bias} sweeps $N=T$ and reports, averaged over operator seeds and cells, the
+standardized bias of the common component and the coverage under the Monte Carlo and general widths.
+The bias plateaus near $0.4$ standard errors and coverage plateaus below nominal, because the
+single-target attention concentrates on a bounded set of hub variables: its participation ratio
+$\mathrm{PR}/N$ keeps shrinking, so the effective cross-sectional dimension does not grow with $N$.
+Both the bias and the standard error then shrink at the same rate and their ratio, which is what
+coverage depends on, does not vanish. This does not contradict E1: the Frobenius-norm error in
+Figure~\ref{fig:e1} is carried by the high-signal hub cells the attention favors, while the
+$Y$-block target cells keep a small relative bias. The upshot is that per-cell inference under the
+concentrated learned operator sits on the boundary the A.7 concentration control is there to
+exclude.
+\tab{e2_gate.tex}{Addition: E2 coverage of the $95\%$ CI by regime and operator arm, under the iid
+plug-in, the feasible general plug-in, and the Monte Carlo sd. The general-plug-in cells inside the
+theory's domain (oracle and clipped) are highlighted.}{tab:e2gate}
 \fig{e2_learned_qq.pdf}{Addition: QQ of the learned-arm studentized statistic (mixed regime) under
 the iid plug-in, the general plug-in, and the Monte Carlo sd. The iid tails fan out; the general and
 Monte Carlo channels pull the bulk onto the line but leave a residual off-center from the
 finite-sample bias.}{fig:e2qq6}
 \fig{e2_bias_sweep.pdf}{Addition: (a) coverage against $N=T$ under the Monte Carlo and general
-widths, both plateauing below the nominal $0.95$; (b) the standardized bias and the growth product
-$\sqrt N\,\bar\alpha$, neither of which vanishes, because the learned operator stays concentrated
-(its participation ratio does not grow with $N$).}{fig:e2bias}
+widths, both plateauing below the nominal $0.95$; (b) the standardized bias, which does not vanish,
+and the operator participation ratio $\mathrm{PR}/N$, which keeps shrinking, so the learned operator
+stays concentrated as $N$ grows.}{fig:e2bias}
 
-\subsection*{B4. The projected arms: clip and blend}
-A.7's two halves are jointly an anti-concentration condition. If $\|A_z\|_{\mathrm{op}}\le\kappa$ and
-$\mathrm{tr}(A_z^\top A_z)/N=c_A$, then $\mathrm{PR}/N\ge c_A/\kappa^2$; each half alone is satisfiable
-by a concentrated operator, and the two failing arms show it. The raw arm keeps the trace half by
-scaling but its op-norm grows, so it fails the norm half. We then try two projections that are
-deterministic functions of the frozen operator, so the sample-splitting convention is intact, and we
-apply each to \emph{both} operators, since the temporal $B$ is concentrated on the same footing as
-$A_z$ and drives the loading-CLT term.
+\subsection*{B4. The clipped operator arm}
+We add the projected arm: clip the singular values of the frozen $A_z$ at a fixed $\kappa=3$,
+re-apply the trace scaling, and alternate twice so both halves of A.7 hold. It is a deterministic
+function of the frozen operator, so the sample-splitting convention is intact. The clip does bound
+the operator norm, from $\approx8$ to $9$ down to $\approx3$ in the $\Lambda$-dominant and mixed
+regimes (Table~\ref{tab:e2gate}), but coverage does not improve with it. The operator norm was not
+the binding quantity: the concentration measured by the participation ratio, and the bias it drives,
+are what keep coverage off nominal, and the singular-value clip does not change them.
 
-The \emph{clip} caps the singular values at $\kappa=3$ and re-applies the trace scaling. For an
-effectively low-rank spectrum this has no fixed point: clipping removes top mass but cannot create
-the tail mass the trace half needs, so the rescale nudges the op-norm back above $\kappa$ and the arm
-lands on the A.7 boundary, $\mathrm{PR}/N$ just above $c_A/\kappa^2$ (Table~\ref{tab:e2gate}).
-Coverage improves but stops short. The \emph{blend} adds the missing tail mass: clip at $\kappa_0=3$,
-add $\delta I$ with $\delta=1$, then trace-rescale once. It is a shrinkage of the learned attention
-toward the identity, giving every variable a baseline self-weight, and it lands comfortably inside the
-domain, $\mathrm{PR}/N\approx0.35$ with the op-norm at or below $3$. Under the general plug-in the
-blend arm is near nominal in all three regimes (Table~\ref{tab:e2gate}, blend rows), and its Monte
-Carlo coverage is nominal, so it validates the domain where the clip only reaches its edge.
+\clearpage
+\section*{Addition after July 7th}
+The July reply corrected the clipped arm and pointed at the fix. This round makes those changes:
+the clipped arm sits on the A.7 boundary rather than inside it, the corrected blend arm re-enters
+the domain and has to act on both operators, and the boundary then reads cleanly in the paper's own
+quantities. The July-6 material above is left as it was.
 
-Fixing both axes is necessary, and which axis binds is regime-dependent in exactly the way the two
-CLT terms predict. Blending $A_z$ alone nearly closes the F-dominant regime, where small $N$ makes
-the factor-CLT term (carrying $A_z$) dominant, but not the $\Lambda$-dominant regime; blending $B$
-alone does the reverse, closing $\Lambda$-dominant, where small $T$ makes the loading-CLT term
-(carrying $B$) dominant; only blending both closes the mixed regime. The binding quantity is the pair
-of anti-concentration conditions, one per axis.
+\subsection*{C1. The clipped arm sits on the A.7 boundary}
+The two halves of A.7 are jointly an anti-concentration condition. If $\|A_z\|_{\mathrm{op}}\le\kappa$
+and $\mathrm{tr}(A_z^\top A_z)/N=c_A$, then $\mathrm{PR}/N\ge c_A/\kappa^2$, with $\kappa=3$ and
+$c_A=1$ about $0.11$. Measuring the clipped arm (Table~\ref{tab:e2gate7}) gives $\mathrm{PR}/N$ around
+$0.12$ to $0.19$ with $\mathrm{tr}/N=1$ and the op-norm at $3.0$ to $3.4$, the rescale nudging it just
+above $\kappa$. So the clip raises the participation ratio, it does not leave it unchanged: the
+$0.03$ to $0.14$ quoted in B4 is the raw arm's value, not the clip's. The clip lands on the boundary,
+which is why its coverage improves over the raw arm but stops short. On check (a), re-studentizing by
+the Monte Carlo sd restores the distributional shape, the F- and $\Lambda$-dominant statistics are
+close to normal with the QQ bulk on the line (Figure~\ref{fig:e2qq6}), so what does not vanish is a
+location term, the bias, not the shape.
 
-\subsection*{B5. The boundary in theorem-native units}
-Figure~\ref{fig:e2delta} sweeps the blend shrinkage $\delta$ from $0$, the concentrated end where the
-blend reduces to the clip, toward $5$, where it converges to the identity, applied to both operators,
-and plots the general-plug-in coverage against the realized effective rank $\mathrm{PR}/N$
-(equivalently the middle term of $\bar\alpha$, since it equals $1/\mathrm{PR}$). As $\delta$ lifts
-$\mathrm{PR}/N$ through the A.7 threshold $c_A/\kappa_0^2$, coverage climbs to nominal: inference
-switches on precisely as the operators re-enter the theory's domain. The boundary is a single curve in
-the paper's own quantity.
+\subsection*{C2. The blend arm re-enters the domain, on both axes}
+The corrected projection adds the tail mass the clip cannot create: clip at $\kappa_0=3$, add
+$\delta I$ with $\delta=1$, then trace-rescale once. It is a shrinkage of the learned attention toward
+the identity, giving every variable a baseline self-weight, and it lands comfortably inside the
+domain, $\mathrm{PR}/N\approx0.35$ with the op-norm at or below $3$ (Table~\ref{tab:e2gate7}).
+
+The projection has to apply to both operators, not only the cross-sectional one. The temporal $B$ is
+concentrated on the same footing, op-norm $4.7$ to $7.4$ and $\mathrm{PR}/T$ $0.05$ to $0.12$, and it
+drives the loading-CLT term. Blending $A_z$ alone nearly closes the F-dominant regime, where small $N$
+makes the factor-CLT term (carrying $A_z$) dominant, but not the $\Lambda$-dominant regime; blending
+$B$ alone does the reverse; only blending both closes the mixed regime. With both blended, the
+general-plug-in coverage is near nominal in all three regimes, about $0.93$, and the Monte Carlo
+coverage is nominal (Table~\ref{tab:e2gate7}, blend rows). The binding quantity is the pair of
+anti-concentration conditions, one per axis, and which axis binds is regime-dependent in exactly the
+way the two CLT terms predict.
+\tab{e2_gate7.tex}{Addition: E2 coverage of the $95\%$ CI by regime and operator arm, now with the
+A.7 quantities $\|A_z\|_{\mathrm{op}}$ and $\mathrm{PR}/N$ and the blend arm added, under the iid
+plug-in, the feasible general plug-in, and the Monte Carlo sd. The clip and blend arms apply the same
+projection to the temporal operator $B$; the general-plug-in cells inside the theory's domain (oracle
+and blend) are highlighted.}{tab:e2gate7}
+
+\subsection*{C3. The boundary in theorem-native units}
+The middle term of $\bar\alpha$ equals $1/\mathrm{PR}$, so a bounded participation ratio makes
+$\bar\alpha$ stall and $\sqrt N\,\bar\alpha$ grow: along the sweep of Figure~\ref{fig:e2bias} it runs
+from about $1.3$ to $3.3$. The Theorem 2--3 growth conditions $\sqrt T\,\bar\alpha\!\to\!0$ and
+$\sqrt{N_{\mathrm{eff}}}\,\bar\alpha\!\to\!0$ therefore fail under a permanently concentrated operator,
+and the $o_p(1)$ remainders surface as exactly the non-vanishing bias in Figure~\ref{fig:e2bias}. The
+$\mathrm{PR}/N$ curve there is that middle term. Figure~\ref{fig:e2delta} then sweeps the blend
+shrinkage $\delta$ from $0$, where it reduces to the clip, toward $5$, where it converges to the
+identity, applied to both operators, and plots the general-plug-in coverage against $\mathrm{PR}/N$.
+As $\delta$ lifts the effective rank through the A.7 threshold $c_A/\kappa_0^2$, coverage climbs to
+nominal: inference switches on precisely as the operators re-enter the domain, a single curve in the
+paper's own quantity.
 \fig{e2_delta_sweep.pdf}{Addition: general-plug-in coverage of the blend arm against the effective
 rank $\mathrm{PR}/N$ as the shrinkage $\delta$ grows from $0$ to $5$ (both operators blended), one
 curve per regime, with the A.7 threshold $c_A/\kappa_0^2$ marked. Coverage reaches nominal as the

@@ -71,15 +71,20 @@ def main():
     if e2_both.exists():
         tables.make_e2_both_arms_table(e2_both, tabs / "e2_both_arms.tex")
 
-    # --- Addition (July 6): coverage across operator arms and variance channels. ---
-    e2_gate = o / "e2" / "coverage_gate.csv"
-    if e2_gate.exists():
-        tables.make_e2_gate_table(e2_gate, tabs / "e2_gate.tex")
+    # --- Addition (July 6): coverage across operator arms and variance channels. The July-6
+    # gate table (e2_gate.tex, A_z-only clip) and bias figure are frozen committed snapshots;
+    # the current coverage_gate.csv now carries the blend arm and feeds the July-7 table. ---
     if (o / "e2" / "qq_learned_wb_iid.csv").exists():
         plots.plot_e2_learned_qq(o / "e2", figs / "e2_learned_qq.pdf")
     e2_bias = o / "e2" / "bias_sweep.csv"
     if e2_bias.exists():
         plots.plot_e2_bias_sweep(e2_bias, figs / "e2_bias_sweep.pdf")
+
+    # --- Addition (July 7): corrected gate table (adds the blend arm + PR/N) and the blend
+    # delta-sweep boundary exhibit. ---
+    e2_gate = o / "e2" / "coverage_gate.csv"
+    if e2_gate.exists():
+        tables.make_e2_gate_table(e2_gate, tabs / "e2_gate7.tex")
     e2_delta = o / "e2" / "delta_sweep.csv"
     if e2_delta.exists():
         plots.plot_e2_delta_sweep(e2_delta, figs / "e2_delta_sweep.pdf")
