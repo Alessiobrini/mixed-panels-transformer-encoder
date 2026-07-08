@@ -266,7 +266,7 @@ def plot_e2_delta_sweep(csv_path, out, kappa0=3.0):
                label=r"A.7 threshold $c_A/\kappa_0^2$")
     ax.set_xlabel(r"effective rank PR/$N$ (blend shrinkage $\delta:0\!\to\!5$)")
     ax.set_ylabel("coverage of 95% CI")
-    ax.set_ylim(0.6, 1.0)
+    ax.set_ylim(0.75, 1.0)
     ax.legend(frameon=True, framealpha=0.9, edgecolor="none", fontsize=7, loc="lower right")
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
