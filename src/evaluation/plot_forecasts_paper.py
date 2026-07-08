@@ -102,8 +102,9 @@ def main():
     if not args.no_usetex:
         mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "serif"
-    for k in ["font.size", "axes.titlesize", "axes.labelsize", "xtick.labelsize", "ytick.labelsize"]:
+    for k in ["font.size", "axes.labelsize", "xtick.labelsize", "ytick.labelsize"]:
         mpl.rcParams[k] = 14
+    mpl.rcParams["axes.titlesize"] = 20   # panels sit at ~0.48 textwidth; enlarge the target-name title
     # Match the sim figures' background: white panel with faint gridlines.
     mpl.rcParams["axes.grid"] = True
     mpl.rcParams["grid.alpha"] = 0.3
