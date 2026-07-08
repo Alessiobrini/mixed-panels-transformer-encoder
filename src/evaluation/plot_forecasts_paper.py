@@ -104,6 +104,9 @@ def main():
     mpl.rcParams["font.family"] = "serif"
     for k in ["font.size", "axes.titlesize", "axes.labelsize", "xtick.labelsize", "ytick.labelsize"]:
         mpl.rcParams[k] = 14
+    # Match the sim figures' background: white panel with faint gridlines.
+    mpl.rcParams["axes.grid"] = True
+    mpl.rcParams["grid.alpha"] = 0.3
 
     targets = args.targets.split(",")
     outdir = Path(args.outdir)
