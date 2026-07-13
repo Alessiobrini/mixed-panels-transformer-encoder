@@ -5,26 +5,26 @@ do NOT read the within-quarter monthly lead must be byte-for-byte unaffected by 
 
     * AR    -- AutoReg on the target's own quarterly history; never touches the dataset.
     * MIDAS -- separate R model; already uses the within-quarter monthly lags by construction.
-    * AB5   -- the "y_only" ablation; sets allowed_frequencies={"Q"}, so monthly rows are
+    * AB3   -- the "y_only" ablation; sets allowed_frequencies={"Q"}, so monthly rows are
                dropped from the dataframe BEFORE LeadMixedFrequencyDataset builds sequences,
                making the lead a structural no-op.
 
 This module provides two subcommands:
 
   invariance  (dataset-level, deterministic, no training)
-      Proves mechanically that the AB5 (y-only) context windows are IDENTICAL at lead=0 and
+      Proves mechanically that the AB3 (y-only) context windows are IDENTICAL at lead=0 and
       lead=2, while the mixed (monthly-inclusive) windows DIFFER by exactly the target
       quarter's first `lead` monthly rows. This is the direct, fast proof of the user's
-      requirement ("AB5 context must stop at the previous quarter even with lead=2").
+      requirement ("AB3 context must stop at the previous quarter even with lead=2").
 
   reconcile   (folder-level, against the paper's published Table 1 = ground truth)
       For a set of experiment folders produced at the published reference seed with lead=2,
       compares the LEAD-INVARIANT rows (AR, MIDAS) against build_simulation_table.PAPER_TABLE
       (which equals Tab:evals_simulation in paper/main.tex) within a rounding tolerance. The
-      lead-AFFECTED rows (MPTE, AB1-AB4) are reported as EXPECTED-CHANGE, never failed. AB5 is
-      reported as INVARIANT-BY-CONSTRUCTION (its reproduction is proven by the dataset test;
-      its single-seed value differs from the paper only by the fixed-HP-vs-Optuna retrain, not
-      by the lead).
+      lead-AFFECTED rows (MPTE, AB1, AB2, AB4, AB5) are reported as EXPECTED-CHANGE, never
+      failed. AB3 is reported as INVARIANT-BY-CONSTRUCTION (its reproduction is proven by the
+      dataset test; its single-seed value differs from the paper only by the fixed-HP-vs-Optuna
+      retrain, not by the lead).
 
 Exit code is non-zero on any hard-stop failure so this can gate the rerun.
 
@@ -70,18 +70,18 @@ def run_invariance(csv: Path, target: str, lead: int, context_days: int) -> int:
     common = dict(csv_path=csv, context_days=context_days, target_variable=target)
     failures = 0
 
-    # ---- AB5 (y-only) path: allowed_frequencies={"Q"} -> lead must be a no-op ----------
+    # ---- AB3 (y-only) path: allowed_frequencies={"Q"} -> lead must be a no-op ----------
     base_y = MixedFrequencyDataset(**common, allowed_frequencies={"Q"})
     lead_y = LeadMixedFrequencyDataset(**common, allowed_frequencies={"Q"}, lead=lead)
     wb, wl = _windows(base_y), _windows(lead_y)
 
-    print(f"[AB5 / y-only]  lead0 windows={len(wb)}  lead{lead} windows={len(wl)}")
+    print(f"[AB3 / y-only]  lead0 windows={len(wb)}  lead{lead} windows={len(wl)}")
     if wb == wl:
-        print(f"  PASS: AB5 context windows are byte-identical at lead=0 and lead={lead}.\n")
+        print(f"  PASS: AB3 context windows are byte-identical at lead=0 and lead={lead}.\n")
     else:
         failures += 1
         n_diff = sum(1 for a, b in zip(wb, wl) if a != b)
-        print(f"  FAIL: AB5 windows DIFFER ({n_diff} of {min(len(wb), len(wl))} differ, "
+        print(f"  FAIL: AB3 windows DIFFER ({n_diff} of {min(len(wb), len(wl))} differ, "
               f"len {len(wb)} vs {len(wl)}). The lead is leaking into a quarterly-only model.\n")
 
     # ---- Mixed path: lead MUST be active (windows differ, monthly-only, by <=lead) ------
@@ -130,7 +130,7 @@ def run_invariance(csv: Path, target: str, lead: int, context_days: int) -> int:
     if failures:
         print(f"RESULT: HARD-STOP FAILURE ({failures} check(s) failed).")
         return 1
-    print("RESULT: PASS -- AB5 is lead-invariant; the lead is active and monthly-only for MPTE.")
+    print("RESULT: PASS -- AB3 is lead-invariant; the lead is active and monthly-only for MPTE.")
     return 0
 
 
@@ -147,7 +147,9 @@ def run_reconcile_sim(folders_tag: str | None, manifest: Path | None, tol: float
     # We accept either an explicit tag prefix (folders named <tag>_<regime>_..._<variant>) or
     # the canonical published folders (default) for a dry self-check.
     LEAD_INVARIANT = {"AR", "MIDAS"}
-    EXPECTED_CHANGE = {"MPTE", "AB1", "AB2", "AB3", "AB4"}
+    # Everything that reads the high-frequency lead changes when the lead shifts; only the
+    # low-frequency-only ablation (AB3, the y-only folder) is invariant by construction.
+    EXPECTED_CHANGE = {"MPTE", "AB1", "AB2", "AB4", "AB5"}
 
     if folders_tag is None and manifest is None:
         print("reconcile --mode sim: provide --folders-tag or --manifest pointing at the "
@@ -199,7 +201,7 @@ def run_reconcile_sim(folders_tag: str | None, manifest: Path | None, tol: float
                     status = "PASS" if d < tol else "FAIL"
                     if status == "FAIL":
                         hard_fail += 1
-                elif label == "AB5":
+                elif label == "AB3":
                     status = "INVARIANT-BY-CONSTR"
                 else:
                     status = "EXPECTED-CHANGE"
@@ -214,7 +216,7 @@ def run_reconcile_sim(folders_tag: str | None, manifest: Path | None, tol: float
     if hard_fail:
         print("RESULT: HARD-STOP FAILURE -- a lead-invariant model changed vs the paper.")
         return 1
-    print("RESULT: PASS -- AR/MIDAS reproduce the paper; MPTE/AB1-4 are expected to change.")
+    print("RESULT: PASS -- AR/MIDAS reproduce the paper; MPTE/AB1,AB2,AB4,AB5 are expected to change.")
     return 0
 
 

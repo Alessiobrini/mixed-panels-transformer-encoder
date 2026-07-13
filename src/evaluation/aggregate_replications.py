@@ -31,6 +31,13 @@ REGIME_LABEL = {"linear": "Linear", "mild": "Mildly Nonlinear", "high": "Highly 
 ROW_ORDER = ["MPTE", "AR", "MIDAS", "AB1", "AB2", "AB3", "AB4", "AB5"]
 METRICS = ["RMSE", "MAE", "DA"]
 
+# DISPLAY-only relabel of the ablation variants. The manifest 'variant' column still carries the
+# OLD label assignment from run_simulation_replications.VARIANTS (variant "AB3" = the both-off
+# folder, "AB5" = the y-only folder); the paper's current AB definitions require the 3-cycle
+# AB3->AB4, AB4->AB5, AB5->AB3. MPTE/AR/MIDAS/AB1/AB2/full are unchanged. On-disk folder names
+# and manifest contents are NOT touched; only the emitted output-row label is remapped.
+VARIANT_DISPLAY = {"AB3": "AB4", "AB4": "AB5", "AB5": "AB3"}
+
 
 def collect(manifest: Path) -> pd.DataFrame:
     """Return long DataFrame: regime, sim_seed, init_seed, model, metric, value."""
@@ -55,7 +62,7 @@ def collect(manifest: Path) -> pd.DataFrame:
                 emit["MIDAS"] = m["midas"]
         else:
             if "transformer" in m:
-                emit[variant] = m["transformer"]
+                emit[VARIANT_DISPLAY.get(variant, variant)] = m["transformer"]
 
         for model, metrics in emit.items():
             for metric in METRICS:

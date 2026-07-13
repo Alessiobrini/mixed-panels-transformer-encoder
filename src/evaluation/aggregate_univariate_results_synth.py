@@ -286,13 +286,13 @@ if save_latex:
     TABLE_DIR = EXPERIMENT_DIR.parent / "tables"
     TABLE_DIR.mkdir(exist_ok=True)
     
-    ABLATION_ORDER = ["B1_", "B2_", "B3_", "B5_", "B6_"]
+    ABLATION_ORDER = ["B1_", "B2_", "B6_", "B3_", "B5_"]
     ABLATION_RENAME = {
         "B1_": "AB1",
         "B2_": "AB2",
-        "B3_": "AB3",
-        "B5_": "AB4",
-        "B6_": "AB5",
+        "B6_": "AB3",
+        "B3_": "AB4",
+        "B5_": "AB5",
     }
     BASELINE_PREFIX = "mixed_frequency_transformer"
     

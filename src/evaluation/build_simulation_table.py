@@ -58,9 +58,9 @@ BASELINE_MODELS = [("MPTE", "transformer"), ("AR", "ar"), ("MIDAS", "midas")]
 ABLATIONS = [
     ("synth_B1_no_nonlinearity", "AB1"),
     ("synth_B2_no_attention", "AB2"),
-    ("synth_B3_no_attention_no_nonlinearity", "AB3"),
-    ("synth_B5_no_positional_encoding", "AB4"),
-    ("synth_B6_y_only", "AB5"),
+    ("synth_B3_no_attention_no_nonlinearity", "AB4"),
+    ("synth_B5_no_positional_encoding", "AB5"),
+    ("synth_B6_y_only", "AB3"),
 ]
 ROW_ORDER = ["MPTE", "AR", "MIDAS", "AB1", "AB2", "AB3", "AB4", "AB5"]
 METRICS = ["RMSE", "MAE", "DA"]
@@ -69,24 +69,28 @@ PRED_PREFIXES = {"transformer": "transformer_preds", "midas": "midas_preds", "ar
 
 # Numbers currently in main.tex (Tab:evals_simulation), for reconciliation.
 # regime -> model -> (RMSE, MAE, DA)
+# NOTE: the AB3/AB4/AB5 entries below are the PRIOR reconciliation constants permuted by the
+# same 3-cycle applied to ABLATIONS (old AB3->AB4, old AB4->AB5, old AB5->AB3), so each label
+# holds the numbers of the folder now mapped to it. They may be stale vs the current main.tex
+# (they do not currently match); regenerating the table against main.tex is a separate task.
 PAPER_TABLE = {
     "Linear": {
         "MPTE": (1.2990, 1.0231, 0.6355), "AR": (1.3832, 1.0930, 0.3283),
         "MIDAS": (1.2631, 0.9733, 0.6807), "AB1": (1.2872, 1.0099, 0.6476),
-        "AB2": (1.2967, 1.0312, 0.6506), "AB3": (1.2679, 0.9933, 0.6747),
-        "AB4": (1.3634, 1.0707, 0.6687), "AB5": (1.3488, 1.0415, 0.6596),
+        "AB2": (1.2967, 1.0312, 0.6506), "AB3": (1.3488, 1.0415, 0.6596),
+        "AB4": (1.2679, 0.9933, 0.6747), "AB5": (1.3634, 1.0707, 0.6687),
     },
     "Mildly Nonlinear": {
         "MPTE": (1.3995, 1.1134, 0.6777), "AR": (1.7798, 1.4361, 0.1235),
         "MIDAS": (1.5162, 1.2112, 0.6355), "AB1": (1.4063, 1.1268, 0.6657),
-        "AB2": (1.4261, 1.1472, 0.6596), "AB3": (1.4365, 1.1422, 0.6566),
-        "AB4": (1.7394, 1.4103, 0.5843), "AB5": (1.4149, 1.1414, 0.6536),
+        "AB2": (1.4261, 1.1472, 0.6596), "AB3": (1.4149, 1.1414, 0.6536),
+        "AB4": (1.4365, 1.1422, 0.6566), "AB5": (1.7394, 1.4103, 0.5843),
     },
     "Highly Nonlinear": {
         "MPTE": (1.1579, 0.9345, 0.5964), "AR": (1.2906, 1.0234, 0.0301),
         "MIDAS": (1.2857, 1.0527, 0.5873), "AB1": (1.2157, 0.9773, 0.5392),
-        "AB2": (1.3084, 1.0407, 0.5090), "AB3": (1.1965, 0.9606, 0.5693),
-        "AB4": (1.3066, 1.0413, 0.5693), "AB5": (1.2018, 0.9706, 0.5994),
+        "AB2": (1.3084, 1.0407, 0.5090), "AB3": (1.2018, 0.9706, 0.5994),
+        "AB4": (1.1965, 0.9606, 0.5693), "AB5": (1.3066, 1.0413, 0.5693),
     },
 }
 

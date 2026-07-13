@@ -48,12 +48,13 @@ PAPER_LOSE = ["GDPC1", "PCECC96", "DPIC96", "UNRATE", "FPIx", "EXPGSC1", "IMPGSC
 
 COMPETING = [("MPTE", "transformer"), ("AR", "ar"), ("MIDAS", "midas"),
              ("OLS", "ols"), ("XGB", "xgb"), ("NN", "nn")]
-# ablation display label -> folder suffix (B5->AB4, B6->AB5, matching the paper). Used by
-# load_target_frame to FIND the ablation folders; the merged columns are keyed by the display
+# ablation display label -> folder suffix (B3->AB4, B5->AB5, B6->AB3, matching the paper). Used
+# by load_target_frame to FIND the ablation folders; the merged columns are keyed by the display
 # label, so make_table must use ABLATION_ROWS (label -> column key) instead, not these suffixes.
 ABLATION_SCEN = [("MPTE", None), ("AB1", "B1_no_nonlinearity"), ("AB2", "B2_no_attention"),
-                 ("AB3", "B3_no_attention_no_nonlinearity"),
-                 ("AB4", "B5_no_positional_encoding"), ("AB5", "B6_y_only")]
+                 ("AB3", "B6_y_only"),
+                 ("AB4", "B3_no_attention_no_nonlinearity"),
+                 ("AB5", "B5_no_positional_encoding")]
 # (display_label, merged-column key) for the ablation table rows. MPTE's preds live under the
 # "transformer" column; each ablation's preds are merged under its display label (see
 # load_target_frame), so the key equals the label here -- NOT the folder suffix above.

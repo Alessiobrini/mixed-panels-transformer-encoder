@@ -144,13 +144,13 @@ transformer_cfg = cfg.setdefault("model", {}).setdefault("transformer", {})
 
 if "nss" in scenario:
     record_change("simulation.nonlinearity", simulation_cfg, "nonlinearity", "rbf")
-    if "no_nonlinearity" in scenario:
+    if "no_attention_no_nonlinearity" in scenario:
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
+    elif "no_nonlinearity" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_attention" in scenario:
         record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
-    elif "no_attention_no_nonlinearity" in scenario:
-        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
-        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only" in scenario:
@@ -164,13 +164,13 @@ if "nss" in scenario:
         raise ValueError(f"Unknown scenario: {scenario}")
 elif "lss" in scenario:
     record_change("simulation.nonlinearity", simulation_cfg, "nonlinearity", "identity")
-    if "no_nonlinearity" in scenario:
+    if "no_attention_no_nonlinearity" in scenario:
+        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
+        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
+    elif "no_nonlinearity" in scenario:
         record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_attention" in scenario:
         record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
-    elif "no_attention_no_nonlinearity" in scenario:
-        record_change("model.transformer.use_attention", transformer_cfg, "use_attention", False)
-        record_change("model.transformer.use_nonlinearity", transformer_cfg, "use_nonlinearity", False)
     elif "no_positional_encoding" in scenario:
         record_change("model.transformer.use_positional_encoding", transformer_cfg, "use_positional_encoding", False)
     elif "y_only" in scenario:
