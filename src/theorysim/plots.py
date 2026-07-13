@@ -290,8 +290,8 @@ def plot_e3_efficiency(e3_csv, out):
 def plot_e4_cca(e4_csv, out):
     rows = _read(e4_csv)
     vals = {r["metric"]: float(r["value"]) for r in rows}
-    nl = [vals[k] for k in sorted(vals) if k.startswith("cca_nl_") and "_ys_" not in k]
-    lin = [vals[k] for k in sorted(vals) if k.startswith("cca_lin_") and "_ys_" not in k]
+    nl = [vals[k] for k in sorted(vals) if k.startswith("cca_nl_") and "_ys_" not in k and "_rest_" not in k]
+    lin = [vals[k] for k in sorted(vals) if k.startswith("cca_lin_") and "_ys_" not in k and "_rest_" not in k]
     idx = np.arange(len(nl))
     w, _ = set_size(TEXTWIDTH_PT, fraction=1.0)
     fig, ax = plt.subplots(figsize=(w, w * 0.42))   # landscape: shorter on the page

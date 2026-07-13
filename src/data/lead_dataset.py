@@ -41,7 +41,10 @@ class LeadMixedFrequencyDataset(MixedFrequencyDataset):
 
         fcol, vcol = self.freq_column, self.variable_column
         is_q_all = self.df[fcol] == "Q"
-        month_tids_all = self.df.loc[~is_q_all, "time_id"]  # cache for the lead lookup
+        # lead is defined in MONTHS into the target quarter, so select monthly rows
+        # specifically rather than "any non-quarterly": on an M+Q panel this is identical,
+        # but on a D+M+Q panel "~Q" would wrongly pick up daily rows.
+        month_tids_all = self.df.loc[self.df[fcol] == "M", "time_id"]  # cache for the lead lookup
 
         result = []
         target_rows = self.df[(self.df[vcol] == self.target_variable) & (self.df[fcol] == "Q")]
