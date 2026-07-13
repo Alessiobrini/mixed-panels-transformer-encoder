@@ -39,7 +39,7 @@ def make_e1_slope_table(csv_by_arm, out):
     """E1 fitted log-log slope per arm (target 1.0)."""
     import numpy as np
     import collections
-    lines = ["Operator arm & fitted slope & target \\\\\n\\midrule\n"]
+    lines = ["Operator configuration & fitted slope & target \\\\\n\\midrule\n"]
     for arm, path in csv_by_arm.items():
         if not Path(path).exists():
             continue
@@ -80,7 +80,7 @@ def make_e1_relative_table(csv_paths, out,
         A = np.vstack([np.log(N), np.ones_like(N)]).T
         return float(np.linalg.lstsq(A, np.log(y), rcond=None)[0][0])
 
-    lines = ["Operator arm & slope $C$ & slope $F$ & slope $\\Lambda$ "
+    lines = ["Operator configuration & slope $C$ & slope $F$ & slope $\\Lambda$ "
              "& $\\|A_z\\|_{\\mathrm{op}}$ at $N_{\\max}$ \\\\\n\\midrule\n"]
     for a in arms:
         sub = [r for r in rows if r["arm"] == a]
@@ -144,7 +144,7 @@ def make_e2_gate_table(csv_path, out):
                         float(r.get("pr_n", 1.0) or 1.0))
         return None, None, None
 
-    lines = ["Regime & Operator arm & $\\|A_z\\|_{\\mathrm{op}}$ & PR/$N$ "
+    lines = ["Regime & Operator configuration & $\\|A_z\\|_{\\mathrm{op}}$ & PR/$N$ "
              "& iid & general & MC \\\\\n\\midrule\n"]
     for rg in regimes:
         name = rg.replace("_", "-")

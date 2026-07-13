@@ -194,7 +194,6 @@ def plot_e2_learned_qq(qq_dir, out, arm="learned_wb"):
         ax.set_title(title, fontsize=9)
         ax.set_xlabel("theoretical quantiles", fontsize=8)
         ax.set_ylabel("ordered $z$" if key == "iid" else "", fontsize=8)
-    fig.suptitle("Learned-arm studentized statistic (mixed regime)", fontsize=9)
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
