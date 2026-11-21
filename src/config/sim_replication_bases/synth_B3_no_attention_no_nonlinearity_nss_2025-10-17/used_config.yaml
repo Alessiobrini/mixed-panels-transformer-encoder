@@ -109,7 +109,7 @@ model:
     dim_feedforward: 128
     activation: relu
     use_nonlinearity: false
-    use_attention: true
+    use_attention: false
     use_positional_encoding: true
   ar:
     max_lag: 40
